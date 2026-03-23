@@ -14,7 +14,6 @@ bot = telebot.TeleBot(TOKEN)
 ADMIN_ID = 8388843828
 
 USERS_FILE = "guess_users.json"
-GAME_FILE = "guess_game.json"
 WORDS_FILE = "guess_words.json"
 
 DEFAULT_WORDS = {
@@ -23,12 +22,12 @@ DEFAULT_WORDS = {
 }
 
 SHOP_ITEMS = {
-    "hint": {"name": "🔍 Подсказка", "price": 50, "emoji": "🔍", "effect": "hint"},
-    "time": {"name": "⏱️ +15 секунд", "price": 75, "emoji": "⏱️", "effect": "time"},
-    "reroll": {"name": "🔄 Сменить слово", "price": 100, "emoji": "🔄", "effect": "reroll"},
-    "theme": {"name": "🎭 Своя тема", "price": 200, "emoji": "🎭", "effect": "theme"},
-    "shield": {"name": "🛡️ Защита", "price": 150, "emoji": "🛡️", "effect": "shield"},
-    "double": {"name": "💎 Кристалл x2", "price": 500, "emoji": "💎", "effect": "double"}
+    "hint": {"name": "🔍 Подсказка", "price": 50, "emoji": "🔍"},
+    "time": {"name": "⏱️ +15 секунд", "price": 75, "emoji": "⏱️"},
+    "reroll": {"name": "🔄 Сменить слово", "price": 100, "emoji": "🔄"},
+    "theme": {"name": "🎭 Своя тема", "price": 200, "emoji": "🎭"},
+    "shield": {"name": "🛡️ Защита", "price": 150, "emoji": "🛡️"},
+    "double": {"name": "💎 Кристалл x2", "price": 500, "emoji": "💎"}
 }
 
 def load_json(file):
@@ -79,7 +78,8 @@ def get_user(user_id):
             'fastest_win': None,
             'streak': 0,
             'best_streak': 0,
-            'username': None
+            'username': None,
+            'lang': 'en'
         }
         save_json(USERS_FILE, users)
     return users[uid]
@@ -216,6 +216,7 @@ def guess_letter(letter, user_id):
             return False, f"💀 Поражение! Слово: {game_word}"
         return False, f"❌ Нет такой буквы! Осталось попыток: {game_attempts}"
 
+# ========== КНОПКИ ==========
 def main_menu_kb():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
@@ -257,16 +258,94 @@ def top_kb():
     )
     return markup
 
-@bot.message_handler(commands=['start'])
-def start_command(message):
+# ========== КОМАНДЫ ==========
+@bot.message_handler(commands=['start', 'guess', 'stats', 'top', 'shop', 'lang', 'help'])
+def handle_commands(message):
+    cmd = message.text.split()[0].replace('/', '')
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name
+    
+    # Обновляем юзернейм
     user = get_user(user_id)
     user['username'] = username
     update_user(user_id, user)
     
-    text = f"🎮 **УГАДАЙ СЛОВО**\n\nПривет, {username}! 👋\n💰 Кристаллов: {user['crystals']}\n🏆 Побед: {user['wins']}\n\nВыбери действие:"
-    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu_kb())
+    if cmd == 'start' or cmd == 'guess':
+        # Начинаем игру
+        lang = user.get('lang', 'en')
+        success, word = start_game(message.chat.id, lang, user_id)
+        if not success:
+            bot.reply_to(message, word)
+            return
+        
+        display = get_display_word()
+        wrong = ", ".join(game_wrong_letters) if game_wrong_letters else "—"
+        text = f"⏱️ **УГАДАЙ СЛОВО** — 60 сек\n\nСлово: `{display}`\nПопыток: {game_attempts}\n❌ Уже называли: {wrong}\n💎 За победу: +50\n\n_Отвечай на это сообщение_"
+        sent = bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=types.ForceReply(selective=True))
+        
+        global game_message_id
+        game_message_id = sent.message_id
+        
+        def end_game():
+            global game_active
+            time.sleep(60)
+            if game_active and game_message_id:
+                game_active = False
+                try:
+                    bot.edit_message_text(f"⏰ Время вышло! Слово: {game_word}", game_chat_id, game_message_id)
+                except:
+                    pass
+        threading.Thread(target=end_game, daemon=True).start()
+    
+    elif cmd == 'stats':
+        text = f"📊 **ТВОЯ СТАТИСТИКА**\n\n💰 Кристаллов: {user['crystals']}\n🏆 Побед: {user['wins']}\n🎮 Игр: {user['games']}\n⚡ Лучшее время: {user['fastest_win'] or '—'} сек\n🔥 Текущая серия: {user['streak']}\n🏅 Лучшая серия: {user['best_streak']}"
+        bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu_kb())
+    
+    elif cmd == 'top':
+        users = load_json(USERS_FILE)
+        top = [{'username': u.get('username', f"User_{uid}"), 'crystals': u.get('crystals', 0)} for uid, u in users.items()]
+        top.sort(key=lambda x: x['crystals'], reverse=True)
+        text = "💰 **ТОП ПО КРИСТАЛЛАМ**\n\n"
+        for i, u in enumerate(top[:10], 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            text += f"{medal} {u['username']} — {u['crystals']}💎\n"
+        bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu_kb())
+    
+    elif cmd == 'shop':
+        text = "🛒 **МАГАЗИН**\n\nВыбери товар в меню ниже:"
+        bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=shop_kb())
+    
+    elif cmd == 'lang':
+        text = "🌐 **Выбери язык игры:**"
+        bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=lang_kb())
+    
+    elif cmd == 'help':
+        text = """
+📚 **ПОМОЩЬ**
+
+**Команды:**
+/start — начать игру
+/guess — то же самое
+/stats — моя статистика
+/top — таблица лидеров
+/shop — магазин
+/lang — выбрать язык
+
+**Как играть:**
+1. Нажми /start
+2. Отвечай на сообщение бота буквой или словом
+3. Угадай слово за 60 секунд
+4. Получай кристаллы за победы
+
+**Магазин:**
+🔍 Подсказка — открывает букву (50💎)
+⏱️ +15 секунд — добавляет время (75💎)
+🔄 Сменить слово — новое слово (100💎)
+🎭 Своя тема — выбор темы (200💎)
+🛡️ Защита — не теряешь кристаллы (150💎)
+💎 Кристалл x2 — удваивает выигрыш (500💎)
+        """
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -284,30 +363,24 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
     
     elif data == "lang_ru":
-        users = load_json(USERS_FILE)
-        if str(user_id) not in users:
-            users[str(user_id)] = {}
-        users[str(user_id)]['lang'] = 'ru'
-        save_json(USERS_FILE, users)
-        bot.answer_callback_query(call.id, "🇷🇺 Язык: русский")
         user = get_user(user_id)
+        user['lang'] = 'ru'
+        update_user(user_id, user)
+        bot.answer_callback_query(call.id, "🇷🇺 Язык: русский")
         text = f"🎮 **УГАДАЙ СЛОВО**\n\n💰 Кристаллов: {user['crystals']}\n🏆 Побед: {user['wins']}"
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=main_menu_kb())
     
     elif data == "lang_en":
-        users = load_json(USERS_FILE)
-        if str(user_id) not in users:
-            users[str(user_id)] = {}
-        users[str(user_id)]['lang'] = 'en'
-        save_json(USERS_FILE, users)
-        bot.answer_callback_query(call.id, "🇬🇧 Language: English")
         user = get_user(user_id)
+        user['lang'] = 'en'
+        update_user(user_id, user)
+        bot.answer_callback_query(call.id, "🇬🇧 Language: English")
         text = f"🎮 **GUESS THE WORD**\n\n💰 Crystals: {user['crystals']}\n🏆 Wins: {user['wins']}"
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=main_menu_kb())
     
     elif data == "start_game":
-        users = load_json(USERS_FILE)
-        lang = users.get(str(user_id), {}).get('lang', 'en')
+        user = get_user(user_id)
+        lang = user.get('lang', 'en')
         success, word = start_game(call.message.chat.id, lang, user_id)
         if not success:
             bot.answer_callback_query(call.id, word, show_alert=True)
@@ -431,6 +504,7 @@ def handle_guess(message):
     
     bot.delete_message(message.chat.id, message.message_id)
 
+# ========== АДМИН-КОМАНДЫ ==========
 @bot.message_handler(commands=['addword'])
 def add_word_command(message):
     if message.from_user.id != ADMIN_ID:
