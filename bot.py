@@ -21,19 +21,35 @@ DONATIONS_FILE = "donations.json"
 SETTINGS_FILE = "bot_settings.json"
 NEURAL_DATA_FILE = "neural_data.json"
 
+# ========== ФУНКЦИИ ДЛЯ РАБОТЫ С JSON (ДОЛЖНЫ БЫТЬ ПЕРВЫМИ) ==========
+def load_json(file):
+    if os.path.exists(file):
+        try:
+            with open(file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_json(file, data):
+    try:
+        with open(file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except:
+        pass
+
 # ========== САМООБУЧАЮЩАЯСЯ НЕЙРОСЕТЬ ==========
 class SelfLearningNeuralNetwork:
     def __init__(self, lang):
         self.lang = lang
-        self.ngrams = defaultdict(Counter)  # n-граммы разных порядков
-        self.word_freq = Counter()  # частота слов
-        self.letter_freq = Counter()  # частота букв
-        self.bigram_freq = Counter()  # частота пар букв
-        self.trigram_freq = Counter()  # частота троек букв
+        self.ngrams = defaultdict(Counter)
+        self.word_freq = Counter()
+        self.letter_freq = Counter()
+        self.bigram_freq = Counter()
+        self.trigram_freq = Counter()
         self.vowels = "АЕЁИОУЫЭЮЯ" if lang == "ru" else "AEIOUY"
         self.consonants = "БВГДЖЗЙКЛМНОПРСТУФХЦЧШЩ" if lang == "ru" else "BCDFGHJKLMNPQRSTVWXZ"
         
-        # Загружаем или создаём базу слов
         self._load_or_create_base()
     
     def _load_or_create_base(self):
@@ -83,21 +99,17 @@ class SelfLearningNeuralNetwork:
         
         self.word_freq[word] = 1
         
-        # Обучаем на частотах букв
         for letter in word:
             self.letter_freq[letter] += 1
         
-        # Обучаем на биграммах (пары букв)
         for i in range(len(word) - 1):
             bigram = word[i:i+2]
             self.bigram_freq[bigram] += 1
         
-        # Обучаем на триграммах (тройки букв)
         for i in range(len(word) - 2):
             trigram = word[i:i+3]
             self.trigram_freq[trigram] += 1
         
-        # Обучаем на n-граммах разной длины
         for n in range(1, min(5, len(word))):
             for i in range(len(word) - n):
                 context = word[i:i+n]
@@ -139,10 +151,8 @@ class SelfLearningNeuralNetwork:
         """Проверяет, что слово похоже на реальное"""
         if len(word) < 3:
             return False
-        # Должна быть хотя бы одна гласная
         if not any(c in self.vowels for c in word):
             return False
-        # Не должно быть 3+ согласных подряд
         cons_seq = 0
         for c in word:
             if c in self.consonants:
@@ -151,7 +161,6 @@ class SelfLearningNeuralNetwork:
                     return False
             else:
                 cons_seq = 0
-        # Не должно быть 3+ одинаковых букв подряд
         for i in range(len(word) - 2):
             if word[i] == word[i+1] == word[i+2]:
                 return False
@@ -165,104 +174,38 @@ class SelfLearningNeuralNetwork:
             length = random.randint(min_len, max_len)
             word = []
             
-            # Начинаем со случайной буквы с учётом частот
             word.append(self._get_weighted_letter())
             
             for i in range(1, length):
-                # Выбираем уровень сложности
                 r = random.random()
                 
                 if r < 0.6 and i >= 3:
-                    # Используем 4-граммы
                     context = ''.join(word[-3:])
                     next_char = self._get_next_char(context, 4)
                 elif r < 0.8 and i >= 2:
-                    # Используем 3-граммы
                     context = ''.join(word[-2:])
                     next_char = self._get_next_char(context, 3)
                 elif r < 0.95 and i >= 1:
-                    # Используем биграммы
                     context = word[-1]
                     next_char = self._get_next_char(context, 2)
                 else:
-                    # Случайная буква
                     next_char = None
                 
                 if next_char is None:
-                    # Если нет предсказания, используем частоты букв
                     next_char = self._get_weighted_letter()
                 
                 word.append(next_char)
             
             result = ''.join(word)
             
-            # Проверяем читаемость
             if self._is_readable(result):
                 return result
         
-        # Если не получилось, возвращаем реальное слово из обученных
         if self.word_freq:
             return random.choice(list(self.word_freq.keys()))
         return "КОТ" if self.lang == "ru" else "CAT"
 
-# Создаём нейросети
-neural_networks = {
-    "ru": SelfLearningNeuralNetwork("ru"),
-    "en": SelfLearningNeuralNetwork("en")
-}
-
-# ========== ФУНКЦИИ ==========
-def load_json(file):
-    if os.path.exists(file):
-        try:
-            with open(file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_json(file, data):
-    try:
-        with open(file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    except:
-        pass
-
-def load_settings():
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_settings(settings):
-    try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2, ensure_ascii=False)
-    except:
-        pass
-
-def save_donation(user_id, username, stars, crystals_given):
-    donations = load_json(DONATIONS_FILE)
-    if 'donations' not in donations:
-        donations['donations'] = []
-    donation = {
-        'user_id': user_id,
-        'username': username,
-        'stars': stars,
-        'crystals': crystals_given,
-        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    donations['donations'].append(donation)
-    if 'stats' not in donations:
-        donations['stats'] = {}
-    donations['stats']['total_stars'] = donations['stats'].get('total_stars', 0) + stars
-    donations['stats']['total_crystals'] = donations['stats'].get('total_crystals', 0) + crystals_given
-    donations['stats']['total_donations'] = donations['stats'].get('total_donations', 0) + 1
-    save_json(DONATIONS_FILE, donations)
-
+# ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ ==========
 def get_user(user_id):
     users = load_json(USERS_FILE)
     uid = str(user_id)
@@ -300,7 +243,6 @@ def add_win(user_id, word):
         user['best_streak'] = user['streak']
     update_user(user_id, user)
     
-    # Обучаем нейросеть на слове, которое угадали
     lang = user.get('lang', 'ru')
     neural_networks[lang].learn_word(word)
 
@@ -310,10 +252,52 @@ def add_loss(user_id):
     user['streak'] = 0
     update_user(user_id, user)
 
+def save_donation(user_id, username, stars, crystals_given):
+    donations = load_json(DONATIONS_FILE)
+    if 'donations' not in donations:
+        donations['donations'] = []
+    donation = {
+        'user_id': user_id,
+        'username': username,
+        'stars': stars,
+        'crystals': crystals_given,
+        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    donations['donations'].append(donation)
+    if 'stats' not in donations:
+        donations['stats'] = {}
+    donations['stats']['total_stars'] = donations['stats'].get('total_stars', 0) + stars
+    donations['stats']['total_crystals'] = donations['stats'].get('total_crystals', 0) + crystals_given
+    donations['stats']['total_donations'] = donations['stats'].get('total_donations', 0) + 1
+    save_json(DONATIONS_FILE, donations)
+
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_settings(settings):
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+    except:
+        pass
+
 def get_word(lang):
     """Генерирует слово с помощью нейросети"""
     return neural_networks[lang].generate_word()
 
+# ========== СОЗДАЁМ НЕЙРОСЕТИ (ПОСЛЕ ОПРЕДЕЛЕНИЯ ВСЕХ ФУНКЦИЙ) ==========
+neural_networks = {
+    "ru": SelfLearningNeuralNetwork("ru"),
+    "en": SelfLearningNeuralNetwork("en")
+}
+
+# ========== КЛАСС ИГРЫ ==========
 class Game:
     def __init__(self, chat_id, user_id, lang, message_id):
         self.chat_id = chat_id
@@ -417,7 +401,7 @@ class Game:
         self.attempts = 6
         return f"<b>Слово заменено!</b>"
 
-# ========== КЛАВИАТУРЫ (ровные кнопки) ==========
+# ========== КЛАВИАТУРЫ ==========
 def send_with_image(chat_id, image_key, text, reply_markup=None):
     settings = load_settings()
     images = settings.get("images", {})
