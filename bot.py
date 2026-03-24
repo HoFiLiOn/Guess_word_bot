@@ -9,147 +9,173 @@ import random
 import json
 import os
 import re
-from collections import defaultdict
+from collections import defaultdict, Counter
+from datetime import datetime
 
 TOKEN = "7766594100:AAH7j4yGEW5Tqoiu8IguYh0Mn3g7lMbPwj8"
 bot = telebot.TeleBot(TOKEN)
 ADMIN_ID = 8388843828
 
 USERS_FILE = "guess_users.json"
+DONATIONS_FILE = "donations.json"
 
-# ========== НЕЙРОСЕТЬ ДЛЯ ГЕНЕРАЦИИ РЕАЛЬНЫХ СЛОВ ==========
-# Частоты букв в русском языке (обучено на реальных текстах)
-RUSSIAN_LETTERS = {
-    'А': 0.080, 'Б': 0.019, 'В': 0.045, 'Г': 0.022, 'Д': 0.030,
-    'Е': 0.084, 'Ё': 0.001, 'Ж': 0.014, 'З': 0.020, 'И': 0.074,
-    'Й': 0.016, 'К': 0.034, 'Л': 0.044, 'М': 0.032, 'Н': 0.067,
-    'О': 0.109, 'П': 0.028, 'Р': 0.048, 'С': 0.055, 'Т': 0.063,
-    'У': 0.026, 'Ф': 0.006, 'Х': 0.015, 'Ц': 0.009, 'Ч': 0.018,
-    'Ш': 0.012, 'Щ': 0.008, 'Ъ': 0.003, 'Ы': 0.024, 'Ь': 0.023,
-    'Э': 0.007, 'Ю': 0.010, 'Я': 0.025
-}
-
-ENGLISH_LETTERS = {
-    'A': 0.081, 'B': 0.014, 'C': 0.027, 'D': 0.042, 'E': 0.127,
-    'F': 0.022, 'G': 0.020, 'H': 0.060, 'I': 0.069, 'J': 0.001,
-    'K': 0.008, 'L': 0.040, 'M': 0.024, 'N': 0.067, 'O': 0.075,
-    'P': 0.019, 'Q': 0.001, 'R': 0.059, 'S': 0.063, 'T': 0.090,
-    'U': 0.027, 'V': 0.012, 'W': 0.023, 'X': 0.001, 'Y': 0.019, 'Z': 0.001
-}
-
-# Частоты переходов между буквами (марковская цепь 2-го порядка)
-RUSSIAN_TRANSITIONS = defaultdict(lambda: defaultdict(float))
-ENGLISH_TRANSITIONS = defaultdict(lambda: defaultdict(float))
-
-# Обучаем нейросеть на реальных словах
-REAL_RUSSIAN_WORDS = [
-    "КОТ", "ДОМ", "ЛЕС", "САД", "МАМА", "ПАПА", "СЫН", "ДОЧЬ", "БРАТ", "СЕСТРА",
-    "ДРУГ", "МИР", "ДЕНЬ", "НОЧЬ", "ГОД", "ЧАС", "МИНУТА", "ГОРОД", "СОЛНЦЕ",
-    "ЗВЕЗДА", "КНИГА", "СТОЛ", "СТУЛ", "ОКНО", "ДВЕРЬ", "МАШИНА", "УЛИЦА",
-    "ВОДА", "ОГОНЬ", "ВЕТЕР", "СНЕГ", "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА", "ОСЕНЬ",
-    "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ", "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА",
-    "ПЛАНЕТА", "ПРИРОДА", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА"
+# ========== УЛУЧШЕННАЯ НЕЙРОСЕТЬ ДЛЯ ГЕНЕРАЦИИ СЛОВ ==========
+# Большой корпус реальных слов для обучения
+RUSSIAN_WORDS_CORPUS = [
+    "КОТ", "ДОМ", "ЛЕС", "САД", "РОЗА", "МАМА", "ПАПА", "СЫН", "ДОЧЬ", "БРАТ",
+    "СЕСТРА", "ДРУГ", "МИР", "ДЕНЬ", "НОЧЬ", "ГОРОД", "СОЛНЦЕ", "ЗВЕЗДА", "КНИГА",
+    "СТОЛ", "СТУЛ", "ОКНО", "ДВЕРЬ", "РУЧКА", "МАШИНА", "УЛИЦА", "ПАРК", "ЛУНА",
+    "ЗЕМЛЯ", "ВОДА", "ОГОНЬ", "ВЕТЕР", "СНЕГ", "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА",
+    "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ", "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА",
+    "ПЛАНЕТА", "ПРИРОДА", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА",
+    "УЧИТЕЛЬ", "РАБОТА", "ДЕНЬГИ", "ВРЕМЯ", "МЫСЛЬ", "ИДЕЯ", "МЕЧТА", "НАДЕЖДА",
+    "ВЕРА", "СИЛА", "ЭНЕРГИЯ", "КОСМОС", "ГАЛАКТИКА", "ВСЕЛЕННАЯ", "БЕСКОНЕЧНОСТЬ"
 ]
 
-REAL_ENGLISH_WORDS = [
+ENGLISH_WORDS_CORPUS = [
     "CAT", "DOG", "SUN", "MOON", "STAR", "TREE", "FLOWER", "BIRD", "FISH",
-    "HOUSE", "CAR", "BUS", "MOM", "DAD", "SON", "DAUGHTER", "BROTHER", "SISTER",
-    "FRIEND", "LOVE", "HOPE", "WATER", "FIRE", "EARTH", "WIND", "CLOUD", "RAIN",
-    "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT", "YEAR",
-    "CITY", "TOWN", "STREET", "PARK", "RIVER", "LAKE", "SEA", "OCEAN", "MOUNTAIN"
+    "HOUSE", "CAR", "MOM", "DAD", "SON", "DAUGHTER", "BROTHER", "SISTER",
+    "FRIEND", "LOVE", "HOPE", "WATER", "FIRE", "EARTH", "WIND", "CLOUD",
+    "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT",
+    "CITY", "TOWN", "STREET", "PARK", "RIVER", "LAKE", "SEA", "OCEAN",
+    "MOUNTAIN", "FOREST", "DESERT", "ISLAND", "SKY", "UNIVERSE", "GALAXY",
+    "INFINITY", "ETERNITY", "DREAM", "HAPPINESS", "FREEDOM", "JUSTICE"
 ]
 
-# Обучение нейросети
-for word in REAL_RUSSIAN_WORDS:
-    word = word.upper()
-    for i in range(len(word) - 1):
-        current = word[i]
-        next_char = word[i + 1]
-        RUSSIAN_TRANSITIONS[current][next_char] += 1
-
-for word in REAL_ENGLISH_WORDS:
-    word = word.upper()
-    for i in range(len(word) - 1):
-        current = word[i]
-        next_char = word[i + 1]
-        ENGLISH_TRANSITIONS[current][next_char] += 1
-
-# Нормализация вероятностей
-for char, trans in RUSSIAN_TRANSITIONS.items():
-    total = sum(trans.values())
-    for next_char in trans:
-        trans[next_char] /= total
-
-for char, trans in ENGLISH_TRANSITIONS.items():
-    total = sum(trans.values())
-    for next_char in trans:
-        trans[next_char] /= total
-
-def generate_real_word(lang, min_len=3, max_len=8):
-    """Генерирует реальное слово с помощью нейросети"""
-    max_attempts = 50
+class AdvancedNeuralNetwork:
+    """Улучшенная нейросеть для генерации реалистичных слов"""
     
-    for _ in range(max_attempts):
-        length = random.randint(min_len, max_len)
+    def __init__(self, lang):
+        self.lang = lang
+        self.ngram_order = 3  # Марковская цепь 3-го порядка
+        self.ngrams = defaultdict(Counter)
+        self.starts = Counter()
+        self.ends = Counter()
+        self.vowels = "АЕЁИОУЫЭЮЯ" if lang == "ru" else "AEIOUY"
+        self.consonants = "БВГДЖЗЙКЛМНПРСТФХЦЧШЩ" if lang == "ru" else "BCDFGHJKLMNPQRSTVWXZ"
         
-        if lang == "ru":
-            # Выбираем первую букву по частоте
-            letters = list(RUSSIAN_LETTERS.keys())
-            freqs = list(RUSSIAN_LETTERS.values())
-            first_char = random.choices(letters, weights=freqs, k=1)[0]
+        # Обучаем на корпусе слов
+        corpus = RUSSIAN_WORDS_CORPUS if lang == "ru" else ENGLISH_WORDS_CORPUS
+        self._train(corpus)
+    
+    def _train(self, corpus):
+        """Обучение на реальных словах"""
+        for word in corpus:
+            word = word.upper()
+            if len(word) < 2:
+                continue
             
-            word = [first_char]
+            # Запоминаем начало слов
+            prefix = word[:self.ngram_order]
+            self.starts[prefix] += 1
             
-            for i in range(1, length):
-                current = word[-1]
-                # Используем марковскую цепь для следующей буквы
-                if current in RUSSIAN_TRANSITIONS and RUSSIAN_TRANSITIONS[current]:
-                    next_chars = list(RUSSIAN_TRANSITIONS[current].keys())
-                    next_freqs = list(RUSSIAN_TRANSITIONS[current].values())
-                    next_char = random.choices(next_chars, weights=next_freqs, k=1)[0]
-                else:
-                    # Если нет перехода, берем случайную букву
-                    next_char = random.choices(letters, weights=freqs, k=1)[0]
+            # Запоминаем конец слов
+            suffix = word[-self.ngram_order:]
+            self.ends[suffix] += 1
+            
+            # Собираем n-граммы
+            for i in range(len(word) - self.ngram_order):
+                context = word[i:i + self.ngram_order]
+                next_char = word[i + self.ngram_order]
+                self.ngrams[context][next_char] += 1
+    
+    def get_next_char(self, context):
+        """Предсказывает следующую букву на основе контекста"""
+        if context in self.ngrams and self.ngrams[context]:
+            chars = list(self.ngrams[context].keys())
+            weights = list(self.ngrams[context].values())
+            return random.choices(chars, weights=weights, k=1)[0]
+        return None
+    
+    def is_readable(self, word):
+        """Проверяет, что слово читаемое"""
+        if len(word) < 3:
+            return False
+        
+        # Должна быть хотя бы одна гласная
+        if not any(c in self.vowels for c in word):
+            return False
+        
+        # Не должно быть 3+ согласных подряд
+        cons_seq = 0
+        for c in word:
+            if c in self.consonants:
+                cons_seq += 1
+                if cons_seq >= 3:
+                    return False
+            else:
+                cons_seq = 0
+        
+        # Не должно быть 3+ одинаковых букв подряд
+        for i in range(len(word) - 2):
+            if word[i] == word[i+1] == word[i+2]:
+                return False
+        
+        return True
+    
+    def generate_word(self, min_len=3, max_len=10):
+        """Генерирует новое слово"""
+        max_attempts = 100
+        
+        for _ in range(max_attempts):
+            length = random.randint(min_len, max_len)
+            
+            # Выбираем начало из частотных начал
+            if self.starts:
+                starts_list = list(self.starts.keys())
+                starts_weights = list(self.starts.values())
+                start = random.choices(starts_list, weights=starts_weights, k=1)[0]
+            else:
+                # Случайное начало
+                letters = list(RUSSIAN_LETTERS.keys()) if self.lang == "ru" else list(ENGLISH_LETTERS.keys())
+                start = random.choice(letters) * self.ngram_order
+            
+            word = list(start[:self.ngram_order])
+            
+            # Генерируем слово
+            for i in range(length - self.ngram_order):
+                context = ''.join(word[-self.ngram_order:])
+                next_char = self.get_next_char(context)
+                
+                if next_char is None:
+                    # Если нет предсказания, берем случайную букву
+                    if self.lang == "ru":
+                        letters = list(RUSSIAN_LETTERS.keys())
+                        weights = list(RUSSIAN_LETTERS.values())
+                        next_char = random.choices(letters, weights=weights, k=1)[0]
+                    else:
+                        letters = list(ENGLISH_LETTERS.keys())
+                        weights = list(ENGLISH_LETTERS.values())
+                        next_char = random.choices(letters, weights=weights, k=1)[0]
+                
                 word.append(next_char)
             
             result = ''.join(word)
             
-            # Проверка на читаемость
-            vowels = 'АЕЁИОУЫЭЮЯ'
-            if any(v in result for v in vowels) and len(result) >= 3:
+            # Проверяем читаемость
+            if self.is_readable(result):
                 return result
         
-        else:  # English
-            letters = list(ENGLISH_LETTERS.keys())
-            freqs = list(ENGLISH_LETTERS.values())
-            first_char = random.choices(letters, weights=freqs, k=1)[0]
-            
-            word = [first_char]
-            
-            for i in range(1, length):
-                current = word[-1]
-                if current in ENGLISH_TRANSITIONS and ENGLISH_TRANSITIONS[current]:
-                    next_chars = list(ENGLISH_TRANSITIONS[current].keys())
-                    next_freqs = list(ENGLISH_TRANSITIONS[current].values())
-                    next_char = random.choices(next_chars, weights=next_freqs, k=1)[0]
-                else:
-                    next_char = random.choices(letters, weights=freqs, k=1)[0]
-                word.append(next_char)
-            
-            result = ''.join(word)
-            
-            vowels = 'AEIOUY'
-            if any(v in result for v in vowels) and len(result) >= 3:
-                return result
-    
-    # Если не получилось, возвращаем реальное слово из списка
-    if lang == "ru":
-        return random.choice(REAL_RUSSIAN_WORDS)
-    else:
-        return random.choice(REAL_ENGLISH_WORDS)
+        # Если не получилось, возвращаем реальное слово из корпуса
+        corpus = RUSSIAN_WORDS_CORPUS if self.lang == "ru" else ENGLISH_WORDS_CORPUS
+        return random.choice(corpus)
 
-# ========== ЛОББИ И ИГРОВАЯ ЛОГИКА ==========
-active_games = {}  # user_id -> Game
+# Создаем нейросети
+neural_networks = {
+    "ru": AdvancedNeuralNetwork("ru"),
+    "en": AdvancedNeuralNetwork("en")
+}
+
+# ========== ДОНАТ ЧЕРЕЗ TELEGRAM STARS ==========
+# Цены: 1 Star = 50 кристаллов
+DONATE_OPTIONS = {
+    1: {"stars": 1, "crystals": 50, "bonus": 0, "emoji": "⭐"},
+    2: {"stars": 2, "crystals": 100, "bonus": 10, "emoji": "⭐⭐"},
+    5: {"stars": 5, "crystals": 250, "bonus": 30, "emoji": "⭐⭐⭐⭐⭐"},
+    10: {"stars": 10, "crystals": 500, "bonus": 75, "emoji": "🔟⭐"},
+    20: {"stars": 20, "crystals": 1000, "bonus": 200, "emoji": "💎⭐"},
+    50: {"stars": 50, "crystals": 2500, "bonus": 750, "emoji": "👑⭐⭐⭐"}
+}
 
 SHOP_ITEMS = {
     "hint": {"price": 50, "emoji": "🔍", "name": "Подсказка"},
@@ -158,6 +184,9 @@ SHOP_ITEMS = {
     "double": {"price": 500, "emoji": "💎", "name": "Кристалл x2"}
 }
 
+active_games = {}
+
+# ========== ФУНКЦИИ РАБОТЫ С ДАННЫМИ ==========
 def load_json(file):
     if os.path.exists(file):
         try:
@@ -174,6 +203,33 @@ def save_json(file, data):
     except:
         pass
 
+def save_donation(user_id, username, stars, crystals_given):
+    """Сохраняет информацию о донате"""
+    donations = load_json(DONATIONS_FILE)
+    
+    if 'donations' not in donations:
+        donations['donations'] = []
+    
+    donation = {
+        'user_id': user_id,
+        'username': username,
+        'stars': stars,
+        'crystals': crystals_given,
+        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    donations['donations'].append(donation)
+    
+    # Считаем общую статистику донатов
+    if 'stats' not in donations:
+        donations['stats'] = {}
+    
+    donations['stats']['total_stars'] = donations['stats'].get('total_stars', 0) + stars
+    donations['stats']['total_crystals'] = donations['stats'].get('total_crystals', 0) + crystals_given
+    donations['stats']['total_donations'] = donations['stats'].get('total_donations', 0) + 1
+    
+    save_json(DONATIONS_FILE, donations)
+
 def get_user(user_id):
     users = load_json(USERS_FILE)
     uid = str(user_id)
@@ -185,7 +241,9 @@ def get_user(user_id):
             'streak': 0,
             'best_streak': 0,
             'username': None,
-            'lang': 'ru'
+            'lang': 'ru',
+            'donated_stars': 0,
+            'donated_crystals': 0
         }
         save_json(USERS_FILE, users)
     return users[uid]
@@ -220,7 +278,7 @@ class Game:
     def __init__(self, chat_id, user_id, lang, message_id):
         self.chat_id = chat_id
         self.user_id = user_id
-        self.word = generate_real_word(lang)
+        self.word = neural_networks[lang].generate_word()
         self.lang = lang
         self.guessed_letters = []
         self.wrong_letters = []
@@ -242,8 +300,8 @@ class Game:
         display = self.get_display_word()
         wrong = ", ".join(self.wrong_letters) if self.wrong_letters else "—"
         
-        text = f"""🎮 ИГРА УГАДАЙ СЛОВО
-👤 Игрок: {self.user_id}
+        text = f"""🎮 УГАДАЙ СЛОВО (Нейросеть)
+👤 Ваша игра
 
 Слово: {display}
 Попыток: {self.attempts}
@@ -309,11 +367,11 @@ class Game:
         if not_guessed:
             hint_letter = random.choice(not_guessed)
             self.guessed_letters.append(hint_letter)
-            return f"🔍 Подсказка: буква {hint_letter} есть в слове!"
+            return f"🔍 Подсказка: буква {hint_letter} есть в слове!\n\nСлово: {self.get_display_word()}"
         return "❌ Все буквы уже открыты!"
     
     def reroll_word(self):
-        self.word = generate_real_word(self.lang)
+        self.word = neural_networks[self.lang].generate_word()
         self.guessed_letters = []
         self.wrong_letters = []
         self.attempts = 6
@@ -321,10 +379,10 @@ class Game:
 
 # ========== КЛАВИАТУРЫ ==========
 def lobby_kb():
-    """Клавиатура лобби - видна всем"""
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🎮 Начать игру", callback_data="start_game"),
+        types.InlineKeyboardButton("⭐ Поддержать (Донат)", callback_data="donate"),
         types.InlineKeyboardButton("🛒 Магазин", callback_data="shop"),
         types.InlineKeyboardButton("🏆 Топ игроков", callback_data="top"),
         types.InlineKeyboardButton("📊 Моя статистика", callback_data="stats"),
@@ -333,8 +391,17 @@ def lobby_kb():
     )
     return markup
 
+def donate_kb():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    for stars, info in DONATE_OPTIONS.items():
+        markup.add(types.InlineKeyboardButton(
+            f"{info['emoji']} {stars} Star → {info['crystals'] + info['bonus']} 💎 (+{info['bonus']} бонус)",
+            callback_data=f"donate_{stars}"
+        ))
+    markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="back_to_main"))
+    return markup
+
 def game_kb(user_id):
-    """Клавиатура игры - проверяет owner_id"""
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🔍 Подсказка (50💎)", callback_data=f"use_hint_{user_id}"),
@@ -347,8 +414,9 @@ def admin_panel_kb():
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("📊 Общая статистика", callback_data="admin_stats"),
+        types.InlineKeyboardButton("⭐ Статистика донатов", callback_data="admin_donations"),
         types.InlineKeyboardButton("💎 Выдать кристаллы", callback_data="admin_give"),
-        types.InlineKeyboardButton("📝 Добавить слово в словарь", callback_data="admin_addword"),
+        types.InlineKeyboardButton("📝 Добавить слово в нейросеть", callback_data="admin_addword"),
         types.InlineKeyboardButton("👥 Список пользователей", callback_data="admin_users"),
         types.InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")
     )
@@ -370,6 +438,7 @@ def top_kb():
         types.InlineKeyboardButton("💰 По кристаллам", callback_data="top_crystals"),
         types.InlineKeyboardButton("🏆 По победам", callback_data="top_wins"),
         types.InlineKeyboardButton("🔥 По серии", callback_data="top_streak"),
+        types.InlineKeyboardButton("⭐ По донатам", callback_data="top_donations"),
         types.InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")
     )
     return markup
@@ -401,8 +470,10 @@ def start_command(message):
 🏆 Побед: {user['wins']}
 🎮 Игр: {user['games']}
 
-Нажми «Начать игру», чтобы играть!
-Каждый игрок может играть в свою игру независимо!"""
+✨ Нейросеть генерирует уникальные слова!
+⭐ Поддержи проект через Telegram Stars!
+
+Нажми «Начать игру», чтобы играть!"""
     
     bot.send_message(message.chat.id, text, reply_markup=lobby_kb())
 
@@ -417,7 +488,8 @@ def stats_command(message):
 🏆 Побед: {user['wins']}
 🎮 Игр: {user['games']}
 🔥 Текущая серия: {user['streak']}
-🏅 Лучшая серия: {user['best_streak']}"""
+🏅 Лучшая серия: {user['best_streak']}
+⭐ Поддержал проект: {user.get('donated_stars', 0)} Stars"""
     
     bot.send_message(message.chat.id, text, reply_markup=lobby_kb())
 
@@ -442,6 +514,17 @@ def lang_command(message):
     text = "🌐 Выбери язык игры:"
     bot.send_message(message.chat.id, text, reply_markup=lang_kb())
 
+@bot.message_handler(commands=['donate'])
+def donate_command(message):
+    text = """⭐ ПОДДЕРЖАТЬ ПРОЕКТ
+
+Поддержите разработку бота через Telegram Stars!
+
+✨ 1 Star = 50 кристаллов + бонусы!
+
+Выберите сумму доната:"""
+    bot.send_message(message.chat.id, text, reply_markup=donate_kb())
+
 @bot.message_handler(commands=['help'])
 def help_command(message):
     text = """📚 ПОМОЩЬ
@@ -452,6 +535,7 @@ def help_command(message):
 /top — Таблица лидеров
 /shop — Магазин
 /lang — Выбрать язык
+/donate — Поддержать проект
 /help — Помощь
 
 Как играть:
@@ -459,10 +543,12 @@ def help_command(message):
 2. Нажми «Начать игру»
 3. Введи букву или слово
 4. Угадай слово
-5. Получай кристаллы за победы
 
-Нейросеть генерирует реальные слова!
-Каждый игрок играет в свою игру независимо!"""
+✨ Нейросеть генерирует уникальные слова!
+⭐ Донат помогает развитию бота!
+
+🏆 За победу: +50 кристаллов
+🔤 Попыток: 6 ошибок"""
 
     bot.send_message(message.chat.id, text)
 
@@ -483,7 +569,6 @@ def handle_all_messages(message):
     if message.text and message.text.startswith('/'):
         return
     
-    # Проверяем, есть ли активная игра у этого пользователя
     if user_id in active_games and active_games[user_id].active:
         game = active_games[user_id]
         guess_text = message.text.strip()
@@ -492,7 +577,6 @@ def handle_all_messages(message):
             result, msg = game.guess_letter(guess_text)
             
             if not game.active:
-                # Игра закончена
                 bot.edit_message_text(msg, game.chat_id, game.message_id)
                 del active_games[user_id]
                 user = get_user(user_id)
@@ -504,7 +588,6 @@ def handle_all_messages(message):
 Игра завершена! Нажмите «Начать игру» для новой игры!"""
                 bot.send_message(message.chat.id, menu_text, reply_markup=lobby_kb())
             else:
-                # Обновляем игровое сообщение
                 new_text = game.get_game_text(msg)
                 try:
                     bot.edit_message_text(new_text, game.chat_id, game.message_id, reply_markup=game_kb(user_id))
@@ -516,7 +599,6 @@ def handle_all_messages(message):
             except:
                 pass
     else:
-        # Нет активной игры - показываем лобби
         if message.text and not message.text.startswith('/'):
             user = get_user(user_id)
             text = f"""🎮 УГАДАЙ СЛОВО - ЛОББИ
@@ -536,7 +618,7 @@ def callback_handler(call):
     data = call.data
     user = get_user(user_id)
     
-    # Проверка для игровых кнопок - только владелец игры может нажимать
+    # Проверка для игровых кнопок
     if data.startswith("use_hint_"):
         owner_id = int(data.split("_")[2])
         if user_id != owner_id:
@@ -566,6 +648,37 @@ def callback_handler(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=lobby_kb())
         bot.answer_callback_query(call.id)
     
+    elif data == "donate":
+        text = """⭐ ПОДДЕРЖАТЬ ПРОЕКТ
+
+Поддержите разработку бота через Telegram Stars!
+
+✨ 1 Star = 50 кристаллов + бонусы!
+
+Выберите сумму доната:"""
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=donate_kb())
+        bot.answer_callback_query(call.id)
+    
+    elif data.startswith("donate_"):
+        stars = int(data.split("_")[1])
+        option = DONATE_OPTIONS[stars]
+        
+        total_crystals = option['crystals'] + option['bonus']
+        
+        prices = [types.LabeledPrice(label=f"{stars} Stars", amount=stars)]
+        
+        bot.send_invoice(
+            chat_id=call.message.chat.id,
+            title="Поддержка бота",
+            description=f"⭐ {stars} Stars\n✨ +{option['crystals']} кристаллов\n🎁 Бонус: +{option['bonus']} кристаллов\n💰 Итого: {total_crystals} кристаллов",
+            invoice_payload=f"donate_{stars}_{total_crystals}_{user_id}",
+            provider_token="",
+            currency="XTR",
+            prices=prices,
+            start_parameter="donate"
+        )
+        bot.answer_callback_query(call.id)
+    
     elif data == "help":
         text = """📚 КАК ИГРАТЬ
 
@@ -574,10 +687,11 @@ def callback_handler(call):
 3️⃣ Угадай слово
 
 💡 Советы:
+- Нейросеть генерирует уникальные слова
 - Буквы отображаются на своих местах
 - Можно использовать подсказки в магазине
 - За победу дают кристаллы
-- Каждый игрок играет в свою игру!
+- Поддержи проект через донат!
 
 🏆 За победу: +50 кристаллов
 🔤 Попыток: 6 ошибок"""
@@ -609,7 +723,7 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "У вас уже есть активная игра!", show_alert=True)
             return
         
-        text = "🎮 НАЧИНАЕМ ИГРУ..."
+        text = "🎮 НАЧИНАЕМ ИГРУ...\n\n✨ Нейросеть генерирует слово..."
         sent = bot.send_message(call.message.chat.id, text)
         
         game = Game(call.message.chat.id, user_id, lang, sent.message_id)
@@ -680,6 +794,33 @@ def callback_handler(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=top_kb())
         bot.answer_callback_query(call.id)
     
+    elif data == "top_donations":
+        donations = load_json(DONATIONS_FILE)
+        users = load_json(USERS_FILE)
+        
+        # Собираем статистику донатов по пользователям
+        user_donations = defaultdict(int)
+        for d in donations.get('donations', []):
+            user_donations[d['user_id']] += d['stars']
+        
+        top = []
+        for uid, stars in user_donations.items():
+            username = users.get(str(uid), {}).get('username', f"User_{uid}")
+            top.append({'username': username, 'stars': stars})
+        
+        top.sort(key=lambda x: x['stars'], reverse=True)
+        
+        text = "⭐ ТОП ПО ДОНАТАМ\n\n"
+        for i, u in enumerate(top[:10], 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            text += f"{medal} {u['username']} — {u['stars']} Stars\n"
+        
+        if not top:
+            text += "Пока нет донатов. Будь первым! ⭐"
+        
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=top_kb())
+        bot.answer_callback_query(call.id)
+    
     elif data == "stats":
         text = f"""📊 ТВОЯ СТАТИСТИКА
 
@@ -687,7 +828,8 @@ def callback_handler(call):
 🏆 Побед: {user['wins']}
 🎮 Игр: {user['games']}
 🔥 Текущая серия: {user['streak']}
-🏅 Лучшая серия: {user['best_streak']}"""
+🏅 Лучшая серия: {user['best_streak']}
+⭐ Поддержал проект: {user.get('donated_stars', 0)} Stars"""
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=lobby_kb())
         bot.answer_callback_query(call.id)
     
@@ -743,10 +885,14 @@ def callback_handler(call):
             return
         
         users = load_json(USERS_FILE)
+        donations = load_json(DONATIONS_FILE)
+        
         total_users = len(users)
         total_games = sum(u.get('games', 0) for u in users.values())
         total_wins = sum(u.get('wins', 0) for u in users.values())
         total_crystals = sum(u.get('crystals', 0) for u in users.values())
+        total_stars = donations.get('stats', {}).get('total_stars', 0)
+        total_donations = donations.get('stats', {}).get('total_donations', 0)
         
         text = f"""📊 ОБЩАЯ СТАТИСТИКА
 
@@ -754,7 +900,29 @@ def callback_handler(call):
 🎮 Всего игр: {total_games}
 🏆 Всего побед: {total_wins}
 💰 Всего кристаллов: {total_crystals}
+⭐ Всего донатов: {total_donations}
+⭐ Получено Stars: {total_stars}
+
 ⚡ Средний выигрыш: {total_wins/total_users if total_users > 0 else 0:.1f} на игрока"""
+        
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=admin_panel_kb())
+        bot.answer_callback_query(call.id)
+    
+    elif data == "admin_donations":
+        if user_id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "Доступ запрещен")
+            return
+        
+        donations = load_json(DONATIONS_FILE)
+        text = "⭐ ПОСЛЕДНИЕ ДОНАТЫ\n\n"
+        
+        for d in donations.get('donations', [])[-20:]:
+            text += f"👤 {d.get('username', d['user_id'])}\n"
+            text += f"⭐ {d['stars']} Stars → {d['crystals']} 💎\n"
+            text += f"📅 {d['date']}\n\n"
+        
+        if not donations.get('donations'):
+            text += "Пока нет донатов"
         
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=admin_panel_kb())
         bot.answer_callback_query(call.id)
@@ -767,7 +935,7 @@ def callback_handler(call):
         users = load_json(USERS_FILE)
         text = "👥 СПИСОК ПОЛЬЗОВАТЕЛЕЙ\n\n"
         for uid, u in list(users.items())[:20]:
-            text += f"ID: {uid}\n👤 {u.get('username', 'Без имени')}\n💰 {u.get('crystals', 0)}💎 | 🏆 {u.get('wins', 0)}\n\n"
+            text += f"ID: {uid}\n👤 {u.get('username', 'Без имени')}\n💰 {u.get('crystals', 0)}💎 | 🏆 {u.get('wins', 0)}\n⭐ Донат: {u.get('donated_stars', 0)} Stars\n\n"
         
         if len(users) > 20:
             text += f"... и еще {len(users)-20} пользователей"
@@ -795,6 +963,49 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         bot.register_next_step_handler(call.message, admin_add_word_to_neural)
 
+# ========== ОБРАБОТКА ПЛАТЕЖЕЙ ==========
+@bot.pre_checkout_query_handler(func=lambda query: True)
+def handle_pre_checkout(query):
+    """Подтверждение платежа"""
+    bot.answer_pre_checkout_query(query.id, ok=True)
+
+@bot.message_handler(content_types=['successful_payment'])
+def handle_successful_payment(message):
+    """Успешная оплата"""
+    payment = message.successful_payment
+    user_id = message.from_user.id
+    username = message.from_user.username or message.from_user.first_name
+    
+    # Разбираем payload
+    payload = payment.invoice_payload
+    parts = payload.split('_')
+    stars = int(parts[1])
+    crystals = int(parts[2])
+    
+    # Начисляем кристаллы
+    add_crystals(user_id, crystals)
+    
+    # Обновляем информацию о донатах пользователя
+    user = get_user(user_id)
+    user['donated_stars'] = user.get('donated_stars', 0) + stars
+    user['donated_crystals'] = user.get('donated_crystals', 0) + crystals
+    update_user(user_id, user)
+    
+    # Сохраняем донат
+    save_donation(user_id, username, stars, crystals)
+    
+    # Отправляем сообщение
+    text = f"""✅ СПАСИБО ЗА ПОДДЕРЖКУ! 🙏
+
+⭐ Stars: {stars}
+💎 Получено кристаллов: {crystals}
+💰 Ваш баланс: {user['crystals']} кристаллов
+
+Спасибо, что поддерживаете проект! ❤️"""
+    
+    bot.send_message(message.chat.id, text, reply_markup=lobby_kb())
+
+# ========== АДМИН ФУНКЦИИ ==========
 def admin_give_crystals(message):
     try:
         parts = message.text.split()
@@ -806,45 +1017,39 @@ def admin_give_crystals(message):
         bot.reply_to(message, "❌ Ошибка! Формат: ID СУММА")
 
 def admin_add_word_to_neural(message):
-    global REAL_RUSSIAN_WORDS, REAL_ENGLISH_WORDS, RUSSIAN_TRANSITIONS, ENGLISH_TRANSITIONS
     try:
         parts = message.text.split()
         lang = parts[0].lower()
         word = parts[1].upper()
         
-        # Добавляем слово в словарь
+        # Добавляем слово в корпус и переобучаем нейросеть
         if lang == "ru":
-            if word not in REAL_RUSSIAN_WORDS:
-                REAL_RUSSIAN_WORDS.append(word)
-                # Обновляем переходы
-                for i in range(len(word) - 1):
-                    current = word[i]
-                    next_char = word[i + 1]
-                    RUSSIAN_TRANSITIONS[current][next_char] += 1
-                bot.reply_to(message, f"✅ Слово {word} добавлено в нейросеть! Теперь оно будет генерироваться чаще.")
+            if word not in RUSSIAN_WORDS_CORPUS:
+                RUSSIAN_WORDS_CORPUS.append(word)
+                # Пересоздаем нейросеть с новыми данными
+                neural_networks["ru"] = AdvancedNeuralNetwork("ru")
+                bot.reply_to(message, f"✅ Слово {word} добавлено в нейросеть! Теперь она будет генерировать похожие слова.")
             else:
                 bot.reply_to(message, f"❌ Слово {word} уже есть в словаре")
         elif lang == "en":
-            if word not in REAL_ENGLISH_WORDS:
-                REAL_ENGLISH_WORDS.append(word)
-                for i in range(len(word) - 1):
-                    current = word[i]
-                    next_char = word[i + 1]
-                    ENGLISH_TRANSITIONS[current][next_char] += 1
+            if word not in ENGLISH_WORDS_CORPUS:
+                ENGLISH_WORDS_CORPUS.append(word)
+                neural_networks["en"] = AdvancedNeuralNetwork("en")
                 bot.reply_to(message, f"✅ Word {word} added to neural network!")
             else:
                 bot.reply_to(message, f"❌ Word {word} already exists")
         else:
             bot.reply_to(message, "❌ Ошибка! Формат: ru СЛОВО или en WORD")
-    except:
-        bot.reply_to(message, "❌ Ошибка! Формат: ru СЛОВО")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Ошибка: {e}")
 
 if __name__ == "__main__":
-    print("🤖 Guess Word Bot с НЕЙРОСЕТЬЮ запущен")
-    print(f"🧠 Нейросеть обучена на {len(REAL_RUSSIAN_WORDS)} русских словах")
-    print(f"🧠 Нейросеть обучена на {len(REAL_ENGLISH_WORDS)} английских словах")
+    print("🤖 Guess Word Bot с УЛУЧШЕННОЙ НЕЙРОСЕТЬЮ запущен")
+    print(f"🧠 Нейросеть обучена на {len(RUSSIAN_WORDS_CORPUS)} русских словах")
+    print(f"🧠 Нейросеть обучена на {len(ENGLISH_WORDS_CORPUS)} английских словах")
+    print(f"⭐ Донат: 1 Star = 50 кристаллов + бонусы")
     print("👥 Лобби активна - каждый игрок играет в свою игру!")
-    print("Команды: /start, /stats, /top, /shop, /lang, /help, /admin")
+    print("Команды: /start, /stats, /top, /shop, /lang, /donate, /help, /admin")
     try:
         bot.infinity_polling(timeout=60)
     except Exception as e:
