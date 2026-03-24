@@ -21,7 +21,17 @@ DONATIONS_FILE = "donations.json"
 SETTINGS_FILE = "bot_settings.json"
 NEURAL_DATA_FILE = "neural_data.json"
 
-# ========== ФУНКЦИИ ДЛЯ РАБОТЫ С JSON (ДОЛЖНЫ БЫТЬ ПЕРВЫМИ) ==========
+# ========== КАРТИНКИ (ВАШИ) ==========
+DEFAULT_IMAGES = {
+    "main": "https://s10.iimage.su/s/24/gyiVYQqxC4FhKIyY4GD47Mvv1YfJ3KFWNkUAbyKQN.png",
+    "game": "https://s10.iimage.su/s/24/gFsXdz1x7sCnEVQMjpFfzw2t2qzT0lMS8Bz4zJGpU.jpg",
+    "shop": "https://s10.iimage.su/s/24/g0Sj1dDxuKC84sMhP8q3DDK6Q7MDgBRam1v0lyP8H.jpg",
+    "top": "https://s10.iimage.su/s/24/ggZ4ONmxr0bk39GQvB3ODh3cJbSU2XFLlrPstj5cp.jpg",
+    "stats": "https://s10.iimage.su/s/24/gDyJ0rdxDzMm1NngFnHePE7MB5uz3oQphOMwXKCtu.jpg",
+    "donate": "https://s10.iimage.su/s/24/gsqCZaQxs8sp4aoo0dGKbiNKWzrP6Dg5bEnSjvv9f.jpg"
+}
+
+# ========== ФУНКЦИИ ДЛЯ РАБОТЫ С JSON ==========
 def load_json(file):
     if os.path.exists(file):
         try:
@@ -35,6 +45,30 @@ def save_json(file, data):
     try:
         with open(file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+    except:
+        pass
+
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                saved = json.load(f)
+                # Убеждаемся, что картинки есть
+                if "images" not in saved:
+                    saved["images"] = DEFAULT_IMAGES.copy()
+                else:
+                    for key in DEFAULT_IMAGES:
+                        if key not in saved["images"]:
+                            saved["images"][key] = DEFAULT_IMAGES[key]
+                return saved
+        except:
+            return {"images": DEFAULT_IMAGES.copy()}
+    return {"images": DEFAULT_IMAGES.copy()}
+
+def save_settings(settings):
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
     except:
         pass
 
@@ -72,16 +106,14 @@ class SelfLearningNeuralNetwork:
                     "СТОЛ", "СТУЛ", "ОКНО", "ДВЕРЬ", "РУЧКА", "МАШИНА", "УЛИЦА", "ПАРК", "ЛУНА",
                     "ЗЕМЛЯ", "ВОДА", "ОГОНЬ", "ВЕТЕР", "СНЕГ", "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА",
                     "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ", "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА",
-                    "ПЛАНЕТА", "ПРИРОДА", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА",
-                    "УЧИТЕЛЬ", "РАБОТА", "ДЕНЬГИ", "ВРЕМЯ", "МЫСЛЬ", "ИДЕЯ", "МЕЧТА", "НАДЕЖДА"
+                    "ПЛАНЕТА", "ПРИРОДА", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА"
                 ]
             else:
                 base_words = [
                     "CAT", "DOG", "SUN", "MOON", "STAR", "TREE", "FLOWER", "BIRD", "FISH",
                     "HOUSE", "CAR", "MOM", "DAD", "SON", "DAUGHTER", "BROTHER", "SISTER",
                     "FRIEND", "LOVE", "HOPE", "WATER", "FIRE", "EARTH", "WIND", "CLOUD",
-                    "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT",
-                    "CITY", "TOWN", "STREET", "PARK", "RIVER", "LAKE", "SEA", "OCEAN"
+                    "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT"
                 ]
             
             for word in base_words:
@@ -205,6 +237,12 @@ class SelfLearningNeuralNetwork:
             return random.choice(list(self.word_freq.keys()))
         return "КОТ" if self.lang == "ru" else "CAT"
 
+# ========== СОЗДАЁМ НЕЙРОСЕТИ ==========
+neural_networks = {
+    "ru": SelfLearningNeuralNetwork("ru"),
+    "en": SelfLearningNeuralNetwork("en")
+}
+
 # ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ ==========
 def get_user(user_id):
     users = load_json(USERS_FILE)
@@ -271,31 +309,9 @@ def save_donation(user_id, username, stars, crystals_given):
     donations['stats']['total_donations'] = donations['stats'].get('total_donations', 0) + 1
     save_json(DONATIONS_FILE, donations)
 
-def load_settings():
-    if os.path.exists(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_settings(settings):
-    try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(settings, f, indent=2, ensure_ascii=False)
-    except:
-        pass
-
 def get_word(lang):
     """Генерирует слово с помощью нейросети"""
     return neural_networks[lang].generate_word()
-
-# ========== СОЗДАЁМ НЕЙРОСЕТИ (ПОСЛЕ ОПРЕДЕЛЕНИЯ ВСЕХ ФУНКЦИЙ) ==========
-neural_networks = {
-    "ru": SelfLearningNeuralNetwork("ru"),
-    "en": SelfLearningNeuralNetwork("en")
-}
 
 # ========== КЛАСС ИГРЫ ==========
 class Game:
@@ -402,10 +418,13 @@ class Game:
         return f"<b>Слово заменено!</b>"
 
 # ========== КЛАВИАТУРЫ ==========
-def send_with_image(chat_id, image_key, text, reply_markup=None):
+def get_image(key):
     settings = load_settings()
-    images = settings.get("images", {})
-    image_url = images.get(image_key, "")
+    images = settings.get("images", DEFAULT_IMAGES)
+    return images.get(key, DEFAULT_IMAGES.get(key, ""))
+
+def send_with_image(chat_id, image_key, text, reply_markup=None):
+    image_url = get_image(image_key)
     if image_url:
         try:
             bot.send_photo(chat_id=chat_id, photo=image_url, caption=text, reply_markup=reply_markup, parse_mode="HTML")
@@ -415,9 +434,7 @@ def send_with_image(chat_id, image_key, text, reply_markup=None):
         bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode="HTML")
 
 def edit_with_image(chat_id, message_id, image_key, text, reply_markup=None):
-    settings = load_settings()
-    images = settings.get("images", {})
-    image_url = images.get(image_key, "")
+    image_url = get_image(image_key)
     if image_url:
         try:
             bot.edit_message_media(media=types.InputMediaPhoto(media=image_url, caption=text, parse_mode="HTML"), chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
