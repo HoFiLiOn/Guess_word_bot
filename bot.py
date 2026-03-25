@@ -10,6 +10,7 @@ import json
 import os
 import string
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 TOKEN = "7766594100:AAH7j4yGEW5Tqoiu8IguYh0Mn3g7lMbPwj8"
 bot = telebot.TeleBot(TOKEN)
@@ -30,93 +31,34 @@ IMAGES = {
     "donate": "https://s10.iimage.su/s/24/gsqCZaQxs8sp4aoo0dGKbiNKWzrP6Dg5bEnSjvv9f.jpg"
 }
 
-# ========== ЛОББИ ==========
-active_lobbies = {}  # код лобби -> данные лобби
-user_lobby = {}  # user_id -> код лобби
+# ========== ПРЕДМЕТЫ ДЛЯ ЛОББИ ==========
+LOBBY_ITEMS = {
+    "hint_other": {"name": "🔍 Подсказка для другого", "price": 30, "emoji": "🔍", "desc": "Показывает букву у соперника"},
+    "block": {"name": "🚫 Блок", "price": 40, "emoji": "🚫", "desc": "Блокирует ход соперника"},
+    "steal": {"name": "🃏 Кража", "price": 60, "emoji": "🃏", "desc": "Крадёт 10 кристаллов у соперника"},
+    "time_bomb": {"name": "💣 Бомба", "price": 80, "emoji": "💣", "desc": "Соперник пропускает ход"},
+    "shield_lobby": {"name": "🛡️ Щит", "price": 50, "emoji": "🛡️", "desc": "Защита от кражи"},
+    "double_points": {"name": "⚡ Удвоение", "price": 100, "emoji": "⚡", "desc": "Следующая победа даёт x2 кристаллов"}
+}
 
-def generate_lobby_code():
-    """Генерирует случайный 6-значный код"""
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+# ========== ПРИЗЫ КОЛЕСА ФОРТУНЫ ==========
+WHEEL_PRIZES = [
+    {"name": "10 кристаллов", "crystals": 10, "type": "crystals", "weight": 15},
+    {"name": "20 кристаллов", "crystals": 20, "type": "crystals", "weight": 12},
+    {"name": "50 кристаллов", "crystals": 50, "type": "crystals", "weight": 10},
+    {"name": "100 кристаллов", "crystals": 100, "type": "crystals", "weight": 8},
+    {"name": "200 кристаллов", "crystals": 200, "type": "crystals", "weight": 5},
+    {"name": "500 кристаллов", "crystals": 500, "type": "crystals", "weight": 2},
+    {"name": "Подсказка", "crystals": 0, "type": "item", "item": "hint", "weight": 12},
+    {"name": "Сменить слово", "crystals": 0, "type": "item", "item": "reroll", "weight": 10},
+    {"name": "Защита", "crystals": 0, "type": "item", "item": "shield", "weight": 8},
+    {"name": "Удвоение", "crystals": 0, "type": "item", "item": "double", "weight": 5},
+    {"name": "Блок для лобби", "crystals": 0, "type": "item", "item": "block", "weight": 8},
+    {"name": "Кража", "crystals": 0, "type": "item", "item": "steal", "weight": 6},
+    {"name": "0 кристаллов", "crystals": 0, "type": "crystals", "weight": 20}
+]
 
-def create_lobby(creator_id, lang="ru"):
-    """Создаёт новое лобби"""
-    code = generate_lobby_code()
-    active_lobbies[code] = {
-        "creator": creator_id,
-        "players": [creator_id],
-        "lang": lang,
-        "status": "waiting",  # waiting, playing
-        "created_at": datetime.now().isoformat(),
-        "game": None
-    }
-    user_lobby[creator_id] = code
-    return code
-
-def join_lobby(user_id, code):
-    """Присоединяет пользователя к лобби"""
-    if code not in active_lobbies:
-        return False, "❌ Лобби не найдено"
-    
-    lobby = active_lobbies[code]
-    
-    if lobby["status"] != "waiting":
-        return False, "❌ Игра уже началась"
-    
-    if user_id in lobby["players"]:
-        return False, "❌ Вы уже в этом лобби"
-    
-    lobby["players"].append(user_id)
-    user_lobby[user_id] = code
-    return True, lobby
-
-def leave_lobby(user_id):
-    """Выход из лобби"""
-    if user_id not in user_lobby:
-        return False
-    
-    code = user_lobby[user_id]
-    if code in active_lobbies:
-        lobby = active_lobbies[code]
-        if user_id in lobby["players"]:
-            lobby["players"].remove(user_id)
-        
-        # Если лобби пустое, удаляем
-        if len(lobby["players"]) == 0:
-            del active_lobbies[code]
-        elif lobby["creator"] == user_id and len(lobby["players"]) > 0:
-            # Если создатель вышел, назначаем нового создателя
-            lobby["creator"] = lobby["players"][0]
-    
-    del user_lobby[user_id]
-    return True
-
-def start_lobby_game(code):
-    """Начинает игру в лобби"""
-    if code not in active_lobbies:
-        return False, "❌ Лобби не найдено"
-    
-    lobby = active_lobbies[code]
-    
-    if lobby["status"] != "waiting":
-        return False, "❌ Игра уже началась"
-    
-    if len(lobby["players"]) < 2:
-        return False, "❌ Нужно минимум 2 игрока"
-    
-    lobby["status"] = "playing"
-    lobby["game"] = {
-        "word": get_word(lobby["lang"]),
-        "guessed_letters": [],
-        "wrong_letters": [],
-        "attempts": 6,
-        "turn": 0,  # индекс текущего игрока
-        "scores": {player: 0 for player in lobby["players"]},
-        "current_letter": None
-    }
-    
-    return True, lobby
-
-# ========== ПОЛНЫЙ ПЕРЕВОД ==========
+# ========== ТЕКСТЫ ==========
 TEXTS = {
     "ru": {
         "game_title": "🎮 УГАДАЙ СЛОВО",
@@ -169,16 +111,47 @@ TEXTS = {
         "daily_streak": "🔥 Серия: {streak} дней!",
         "wheel_title": "🎡 КОЛЕСО ФОРТУНЫ",
         "wheel_price": "💎 Стоимость вращения: {price}",
-        "wheel_win": "🎉 ПОЗДРАВЛЯЕМ! 🎉\n\n💰 Вы выиграли {prize} кристаллов!",
-        "wheel_lose": "😢 Вам выпало {prize} кристаллов...\n\n💪 В следующий раз повезёт!",
+        "wheel_win": "🎉 ПОЗДРАВЛЯЕМ! 🎉\n\n💰 Вы выиграли {prize}!",
+        "wheel_lose": "😢 Вам выпало {prize}...\n\n💪 В следующий раз повезёт!",
         "wheel_no_money": "❌ Не хватает кристаллов! Нужно {price}",
         "lang_title": "🌐 ВЫБЕРИ ЯЗЫК",
         "lang_ru": "🇷🇺 Русский",
         "lang_en": "🇬🇧 English",
         "help_title": "❓ ПОМОЩЬ",
-        "help_text": "🎮 КАК ИГРАТЬ:\n\n1️⃣ Нажми «Начать игру»\n2️⃣ Введи букву или слово\n3️⃣ Угадай слово\n\n💡 СОВЕТЫ:\n• Буквы отображаются на своих местах\n• Используй подсказки в магазине\n• За победу дают кристаллы\n• Ежедневный бонус и колесо фортуны ждут тебя!\n\n🎲 ЛОББИ:\n/create_lobby ru/en — создать лобби\n/join КОД — присоединиться к лобби\n/leave_lobby — выйти из лобби\n/lobby_info — информация о лобби\n/start_lobby — начать игру (только создатель)\n\n📊 КОМАНДЫ:\n/start — главное меню\n/stats — статистика\n/top — таблица лидеров\n/shop — магазин\n/daily — ежедневный бонус\n/wheel — колесо фортуны\n/lang — язык\n/donate — поддержать\n/help — помощь",
+        "help_text": """🎮 КАК ИГРАТЬ:
+
+1️⃣ Нажми «Начать игру» для одиночной игры
+2️⃣ Или создай лобби: /create_lobby
+3️⃣ Угадывайте слово по буквам
+4️⃣ Получайте кристаллы и попадайте в топ!
+
+💡 СОВЕТЫ:
+• Буквы отображаются на своих местах
+• Используй подсказки в магазине
+• За победу дают кристаллы
+• Ежедневный бонус и колесо фортуны ждут тебя!
+
+🎲 ЛОББИ (игра с друзьями):
+/create_lobby ru/en — создать лобби
+/join КОД — присоединиться
+/leave_lobby — выйти из лобби
+/lobby_info — информация о лобби
+/start_lobby — начать игру (только создатель)
+/lobby_shop — магазин предметов для лобби
+
+📊 КОМАНДЫ:
+/start — главное меню
+/stats — статистика
+/top — таблица лидеров
+/shop — магазин
+/daily — ежедневный бонус
+/wheel — колесо фортуны
+/lang — язык
+/donate — поддержать
+/help — помощь""",
         "buttons": {
             "start": "🎮 Начать игру",
+            "lobby": "🎲 Лобби",
             "donate": "⭐ Поддержать",
             "shop": "🛒 Магазин",
             "top": "🏆 Топ игроков",
@@ -186,7 +159,7 @@ TEXTS = {
             "lang": "🌐 Язык",
             "daily": "🎁 Ежедневный бонус",
             "wheel": "🎡 Колесо фортуны",
-            "lobby": "🎲 Лобби",
+            "lobby_shop": "🛒 Магазин лобби",
             "help": "❓ Помощь",
             "back": "◀️ Назад",
             "spin": "🌀 Крутить!"
@@ -243,16 +216,47 @@ TEXTS = {
         "daily_streak": "🔥 Streak: {streak} days!",
         "wheel_title": "🎡 WHEEL OF FORTUNE",
         "wheel_price": "💎 Spin cost: {price}",
-        "wheel_win": "🎉 CONGRATULATIONS! 🎉\n\n💰 You won {prize} crystals!",
-        "wheel_lose": "😢 You got {prize} crystals...\n\n💪 Better luck next time!",
+        "wheel_win": "🎉 CONGRATULATIONS! 🎉\n\n💰 You won {prize}!",
+        "wheel_lose": "😢 You got {prize}...\n\n💪 Better luck next time!",
         "wheel_no_money": "❌ Not enough crystals! Need {price}",
         "lang_title": "🌐 CHOOSE LANGUAGE",
         "lang_ru": "🇷🇺 Russian",
         "lang_en": "🇬🇧 English",
         "help_title": "❓ HELP",
-        "help_text": "🎮 HOW TO PLAY:\n\n1️⃣ Press «Start Game»\n2️⃣ Enter a letter or word\n3️⃣ Guess the word\n\n💡 TIPS:\n• Letters appear in their places\n• Use hints from the shop\n• Get crystals for wins\n• Daily bonus and wheel of fortune are waiting!\n\n🎲 LOBBY:\n/create_lobby ru/en — create lobby\n/join CODE — join lobby\n/leave_lobby — leave lobby\n/lobby_info — lobby info\n/start_lobby — start game (creator only)\n\n📊 COMMANDS:\n/start — main menu\n/stats — statistics\n/top — leaderboard\n/shop — shop\n/daily — daily bonus\n/wheel — wheel of fortune\n/lang — language\n/donate — support\n/help — help",
+        "help_text": """🎮 HOW TO PLAY:
+
+1️⃣ Press «Start Game» for single game
+2️⃣ Or create lobby: /create_lobby
+3️⃣ Guess the word by letters
+4️⃣ Get crystals and get into the top!
+
+💡 TIPS:
+• Letters appear in their places
+• Use hints from the shop
+• Get crystals for wins
+• Daily bonus and wheel of fortune are waiting!
+
+🎲 LOBBY (play with friends):
+/create_lobby ru/en — create lobby
+/join CODE — join lobby
+/leave_lobby — leave lobby
+/lobby_info — lobby info
+/start_lobby — start game (creator only)
+/lobby_shop — lobby shop
+
+📊 COMMANDS:
+/start — main menu
+/stats — statistics
+/top — leaderboard
+/shop — shop
+/daily — daily bonus
+/wheel — wheel of fortune
+/lang — language
+/donate — support
+/help — help""",
         "buttons": {
             "start": "🎮 Start Game",
+            "lobby": "🎲 Lobby",
             "donate": "⭐ Support",
             "shop": "🛒 Shop",
             "top": "🏆 Leaderboard",
@@ -260,7 +264,7 @@ TEXTS = {
             "lang": "🌐 Language",
             "daily": "🎁 Daily bonus",
             "wheel": "🎡 Wheel of Fortune",
-            "lobby": "🎲 Lobby",
+            "lobby_shop": "🛒 Lobby shop",
             "help": "❓ Help",
             "back": "◀️ Back",
             "spin": "🌀 Spin!"
@@ -299,7 +303,8 @@ def get_user(user_id):
             'lang': 'ru',
             'donated_stars': 0,
             'last_daily': None,
-            'daily_streak': 0
+            'daily_streak': 0,
+            'lobby_items': {}  # предметы для лобби
         }
         save_json(USERS_FILE, users)
     return users[uid]
@@ -381,18 +386,33 @@ def spin_wheel(user_id):
     price = 50
     
     if user['crystals'] < price:
-        return None, price
+        return None, price, None
     
     user['crystals'] -= price
     
-    prizes = [0, 10, 20, 30, 50, 100, 150, 200, 300, 500]
-    weights = [0.15, 0.15, 0.15, 0.12, 0.10, 0.08, 0.07, 0.06, 0.05, 0.07]
+    # Выбираем приз
+    total_weight = sum(p['weight'] for p in WHEEL_PRIZES)
+    r = random.randint(1, total_weight)
+    cumulative = 0
+    prize = None
     
-    prize = random.choices(prizes, weights=weights, k=1)[0]
-    user['crystals'] += prize
-    update_user(user_id, user)
+    for p in WHEEL_PRIZES:
+        cumulative += p['weight']
+        if r <= cumulative:
+            prize = p
+            break
     
-    return prize, price
+    if prize['type'] == 'crystals':
+        user['crystals'] += prize['crystals']
+        update_user(user_id, user)
+        return prize['crystals'], price, None
+    else:
+        # Предмет
+        if 'lobby_items' not in user:
+            user['lobby_items'] = {}
+        user['lobby_items'][prize['item']] = user['lobby_items'].get(prize['item'], 0) + 1
+        update_user(user_id, user)
+        return prize['name'], price, prize['item']
 
 # ========== СЛОВАРЬ СЛОВ ==========
 RUSSIAN_WORDS = [
@@ -400,8 +420,7 @@ RUSSIAN_WORDS = [
     "СЕСТРА", "ДРУГ", "МИР", "ДЕНЬ", "НОЧЬ", "ГОРОД", "СОЛНЦЕ", "ЗВЕЗДА", "КНИГА",
     "СТОЛ", "СТУЛ", "ОКНО", "ДВЕРЬ", "РУЧКА", "МАШИНА", "УЛИЦА", "ПАРК", "ЛУНА",
     "ЗЕМЛЯ", "ВОДА", "ОГОНЬ", "ВЕТЕР", "СНЕГ", "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА",
-    "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ", "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА",
-    "ПЛАНЕТА", "ПРИРОДА", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА"
+    "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ", "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА"
 ]
 
 ENGLISH_WORDS = [
@@ -526,6 +545,247 @@ class Game:
         self.attempts = 6
         return texts["reroll"]
 
+# ========== ЛОББИ ==========
+active_lobbies = {}
+user_lobby = {}
+
+def generate_lobby_code():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def create_lobby(creator_id, lang="ru"):
+    code = generate_lobby_code()
+    active_lobbies[code] = {
+        "creator": creator_id,
+        "players": [creator_id],
+        "lang": lang,
+        "status": "waiting",
+        "created_at": datetime.now().isoformat(),
+        "game": None,
+        "turn": 0,
+        "current_word": None,
+        "guessed_letters": [],
+        "wrong_letters": [],
+        "attempts": 6,
+        "scores": {creator_id: 0},
+        "player_items": {},
+        "blocked_players": set(),
+        "effects": {}
+    }
+    user_lobby[creator_id] = code
+    return code
+
+def join_lobby(user_id, code):
+    if code not in active_lobbies:
+        return False, "❌ Лобби не найдено"
+    
+    lobby = active_lobbies[code]
+    
+    if lobby["status"] != "waiting":
+        return False, "❌ Игра уже началась"
+    
+    if user_id in lobby["players"]:
+        return False, "❌ Вы уже в этом лобби"
+    
+    lobby["players"].append(user_id)
+    lobby["scores"][user_id] = 0
+    lobby["player_items"][user_id] = {}
+    user_lobby[user_id] = code
+    return True, lobby
+
+def leave_lobby(user_id):
+    if user_id not in user_lobby:
+        return False
+    
+    code = user_lobby[user_id]
+    if code in active_lobbies:
+        lobby = active_lobbies[code]
+        if user_id in lobby["players"]:
+            lobby["players"].remove(user_id)
+            if user_id in lobby["scores"]:
+                del lobby["scores"][user_id]
+        
+        if len(lobby["players"]) == 0:
+            del active_lobbies[code]
+        elif lobby["creator"] == user_id and len(lobby["players"]) > 0:
+            lobby["creator"] = lobby["players"][0]
+    
+    del user_lobby[user_id]
+    return True
+
+def start_lobby_game(code):
+    if code not in active_lobbies:
+        return False, "❌ Лобби не найдено"
+    
+    lobby = active_lobbies[code]
+    
+    if lobby["status"] != "waiting":
+        return False, "❌ Игра уже началась"
+    
+    if len(lobby["players"]) < 2:
+        return False, "❌ Нужно минимум 2 игрока"
+    
+    lobby["status"] = "playing"
+    lobby["turn"] = 0
+    lobby["current_word"] = get_word(lobby["lang"])
+    lobby["guessed_letters"] = []
+    lobby["wrong_letters"] = []
+    lobby["attempts"] = 6
+    lobby["blocked_players"] = set()
+    
+    return True, lobby
+
+def get_lobby_game_text(lobby):
+    texts = TEXTS[lobby["lang"]]
+    display = []
+    for letter in lobby["current_word"]:
+        if letter in lobby["guessed_letters"]:
+            display.append(letter)
+        else:
+            display.append("_")
+    display_word = " ".join(display)
+    wrong = ", ".join(lobby["wrong_letters"]) if lobby["wrong_letters"] else "—"
+    
+    current_player = lobby["players"][lobby["turn"]]
+    current_user = get_user(current_player)
+    
+    # Строим список игроков
+    players_list = []
+    for i, pid in enumerate(lobby["players"]):
+        user = get_user(pid)
+        mark = "👉 " if i == lobby["turn"] else "   "
+        players_list.append(f"{mark}{user.get('username', f'Игрок {pid}')} — {lobby['scores'].get(pid, 0)}💎")
+    
+    text = f"""🎮 ИГРА В ЛОББИ
+{texts["game_title"]}
+
+📖 Слово: {display_word}
+💪 Попыток: {lobby["attempts"]}
+❌ Ошибки: {wrong}
+
+👥 ИГРОКИ:
+{chr(10).join(players_list)}
+
+🎯 Ходит: {current_user.get('username', f'Игрок {current_player}')}
+
+Введите букву или слово:"""
+    return text
+
+def lobby_guess_letter(lobby, user_id, letter):
+    texts = TEXTS[lobby["lang"]]
+    
+    # Проверяем, чей ход
+    current_player = lobby["players"][lobby["turn"]]
+    if user_id != current_player:
+        return False, f"❌ Сейчас ходит {get_user(current_player).get('username', 'другой игрок')}!"
+    
+    # Проверяем блокировку
+    if user_id in lobby["blocked_players"]:
+        lobby["blocked_players"].remove(user_id)
+        lobby["turn"] = (lobby["turn"] + 1) % len(lobby["players"])
+        return False, "🚫 Вы были заблокированы! Ход переходит к следующему игроку."
+    
+    letter = letter.upper()
+    
+    if len(letter) > 1:
+        if letter == lobby["current_word"]:
+            reward = 50
+            # Проверяем эффекты
+            if lobby["effects"].get(user_id, {}).get("double_points"):
+                reward *= 2
+                del lobby["effects"][user_id]["double_points"]
+            add_crystals(user_id, reward)
+            lobby["scores"][user_id] = lobby["scores"].get(user_id, 0) + reward
+            
+            # Проверяем, закончилась ли игра
+            # Здесь можно сделать несколько раундов
+            lobby["status"] = "finished"
+            return True, f"🏆 {get_user(user_id).get('username', 'Игрок')} УГАДАЛ СЛОВО!\n\n📖 Слово: {lobby['current_word']}\n💎 +{reward} кристаллов!"
+        
+        lobby["attempts"] -= 1
+        if lobby["attempts"] <= 0:
+            lobby["status"] = "finished"
+            return False, f"💀 ПОРАЖЕНИЕ!\n\n📖 Слово: {lobby['current_word']}"
+        lobby["turn"] = (lobby["turn"] + 1) % len(lobby["players"])
+        return False, f"❌ Неправильно! Осталось попыток: {lobby['attempts']}"
+    
+    if letter in lobby["guessed_letters"] or letter in lobby["wrong_letters"]:
+        return False, "❌ Эта буква уже называлась!"
+    
+    if letter in lobby["current_word"]:
+        lobby["guessed_letters"].append(letter)
+        
+        if all(l in lobby["guessed_letters"] for l in lobby["current_word"]):
+            reward = 50
+            if lobby["effects"].get(user_id, {}).get("double_points"):
+                reward *= 2
+            add_crystals(user_id, reward)
+            lobby["scores"][user_id] = lobby["scores"].get(user_id, 0) + reward
+            lobby["status"] = "finished"
+            return True, f"🏆 {get_user(user_id).get('username', 'Игрок')} УГАДАЛ СЛОВО!\n\n📖 Слово: {lobby['current_word']}\n💎 +{reward} кристаллов!"
+        
+        lobby["turn"] = (lobby["turn"] + 1) % len(lobby["players"])
+        return True, f"✅ Есть такая буква! Ход переходит к следующему."
+    else:
+        lobby["wrong_letters"].append(letter)
+        lobby["attempts"] -= 1
+        
+        if lobby["attempts"] <= 0:
+            lobby["status"] = "finished"
+            return False, f"💀 ПОРАЖЕНИЕ!\n\n📖 Слово: {lobby['current_word']}"
+        
+        lobby["turn"] = (lobby["turn"] + 1) % len(lobby["players"])
+        return False, f"❌ Нет такой буквы! Осталось попыток: {lobby['attempts']}"
+
+def use_lobby_item(lobby, user_id, target_id, item_type):
+    user = get_user(user_id)
+    if item_type not in user.get('lobby_items', {}) or user['lobby_items'][item_type] < 1:
+        return False, "❌ У вас нет такого предмета!"
+    
+    # Проверяем, что цель в лобби
+    if target_id not in lobby["players"]:
+        return False, "❌ Игрок не найден в лобби!"
+    
+    user['lobby_items'][item_type] -= 1
+    if user['lobby_items'][item_type] == 0:
+        del user['lobby_items'][item_type]
+    update_user(user_id, user)
+    
+    if item_type == "hint_other":
+        # Показываем букву сопернику
+        not_guessed = [l for l in lobby["current_word"] if l not in lobby["guessed_letters"]]
+        if not_guessed:
+            hint_letter = random.choice(not_guessed)
+            lobby["guessed_letters"].append(hint_letter)
+            return True, f"🔍 Игрок {get_user(user_id).get('username')} показал букву {hint_letter}!"
+    
+    elif item_type == "block":
+        lobby["blocked_players"].add(target_id)
+        return True, f"🚫 Игрок {get_user(target_id).get('username')} заблокирован на следующий ход!"
+    
+    elif item_type == "steal":
+        target = get_user(target_id)
+        steal_amount = 10
+        if target['crystals'] >= steal_amount:
+            target['crystals'] -= steal_amount
+            user['crystals'] += steal_amount
+            update_user(target_id, target)
+            update_user(user_id, user)
+            return True, f"🃏 Игрок {get_user(user_id).get('username')} украл {steal_amount}💎 у {get_user(target_id).get('username')}!"
+        else:
+            return True, f"🃏 Не удалось украсть! У {get_user(target_id).get('username')} нет кристаллов."
+    
+    elif item_type == "time_bomb":
+        lobby["blocked_players"].add(target_id)
+        return True, f"💣 Игрок {get_user(target_id).get('username')} пропускает ход!"
+    
+    elif item_type == "double_points":
+        if user_id not in lobby["effects"]:
+            lobby["effects"][user_id] = {}
+        lobby["effects"][user_id]["double_points"] = True
+        return True, f"⚡ Игрок {get_user(user_id).get('username')} получил удвоение кристаллов за следующую победу!"
+    
+    return False, "❌ Предмет не может быть использован!"
+
 # ========== КЛАВИАТУРЫ ==========
 def get_user_lang(user_id):
     user = get_user(user_id)
@@ -555,9 +815,44 @@ def lobby_menu_kb(user_id):
         types.InlineKeyboardButton("🎲 Создать лобби", callback_data="create_lobby"),
         types.InlineKeyboardButton("🔍 Инфо о лобби", callback_data="lobby_info"),
         types.InlineKeyboardButton("🚪 Выйти из лобби", callback_data="leave_lobby"),
+        types.InlineKeyboardButton("🛒 Магазин лобби", callback_data="lobby_shop"),
         types.InlineKeyboardButton("▶️ Старт игры", callback_data="start_lobby"),
         types.InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")
     )
+    return markup
+
+def lobby_shop_kb(user_id):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    for item_id, item in LOBBY_ITEMS.items():
+        markup.add(types.InlineKeyboardButton(
+            f"{item['emoji']} {item['name']} — {item['price']}💎",
+            callback_data=f"lobby_buy_{item_id}"
+        ))
+    markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="lobby_menu"))
+    return markup
+
+def lobby_items_kb(user_id, code):
+    user = get_user(user_id)
+    lobby = active_lobbies.get(code)
+    if not lobby:
+        return None
+    
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    items = user.get('lobby_items', {})
+    
+    for item_id, count in items.items():
+        item = LOBBY_ITEMS.get(item_id, {})
+        if item:
+            # Кнопки для выбора цели
+            for player_id in lobby["players"]:
+                if player_id != user_id:
+                    player = get_user(player_id)
+                    markup.add(types.InlineKeyboardButton(
+                        f"🎯 {item['name']} → {player.get('username', player_id)}",
+                        callback_data=f"lobby_use_{item_id}_{player_id}"
+                    ))
+    
+    markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="lobby_menu"))
     return markup
 
 def donate_kb(user_id):
@@ -706,7 +1001,6 @@ def create_lobby_command(message):
     if len(args) > 1 and args[1] in ["ru", "en"]:
         lang = args[1]
     
-    # Проверяем, не в лобби ли уже
     if user_id in user_lobby:
         bot.reply_to(message, "❌ Вы уже в лобби! Используйте /leave_lobby чтобы выйти")
         return
@@ -725,7 +1019,6 @@ def join_lobby_command(message):
     
     code = args[1].upper()
     
-    # Проверяем, не в лобби ли уже
     if user_id in user_lobby:
         bot.reply_to(message, "❌ Вы уже в лобби! Используйте /leave_lobby чтобы выйти")
         return
@@ -742,7 +1035,6 @@ def join_lobby_command(message):
         text = f"✅ Вы присоединились к лобби {code}!\n\n👥 Игроки:\n" + "\n".join(players)
         bot.reply_to(message, text)
         
-        # Уведомляем создателя
         creator = lobby["creator"]
         bot.send_message(creator, f"🎉 Новый игрок присоединился к лобби {code}!\n\n👥 Игроков: {len(lobby['players'])}\n\n▶️ /start_lobby - начать игру")
     else:
@@ -756,7 +1048,6 @@ def leave_lobby_command(message):
         bot.reply_to(message, "❌ Вы не в лобби")
         return
     
-    code = user_lobby[user_id]
     leave_lobby(user_id)
     bot.reply_to(message, "✅ Вы вышли из лобби")
 
@@ -779,7 +1070,7 @@ def lobby_info_command(message):
     for pid in lobby["players"]:
         user = get_user(pid)
         prefix = "👑 " if pid == lobby["creator"] else "👤 "
-        players.append(f"{prefix}{user.get('username', f'Игрок {pid}')}")
+        players.append(f"{prefix}{user.get('username', f'Игрок {pid}')} — {lobby['scores'].get(pid, 0)}💎")
     
     text = f"""🎲 ИНФОРМАЦИЯ О ЛОББИ
 
@@ -789,9 +1080,7 @@ def lobby_info_command(message):
 📊 Статус: {'⏳ Ожидание' if lobby['status'] == 'waiting' else '🎮 Игра идёт'}
 
 👥 Игроки ({len(lobby['players'])}):
-{chr(10).join(players)}
-
-{'▶️ /start_lobby - начать игру' if lobby['creator'] == user_id and lobby['status'] == 'waiting' else ''}"""
+{chr(10).join(players)}"""
     
     bot.reply_to(message, text)
 
@@ -826,14 +1115,50 @@ def start_lobby_command(message):
     
     if success:
         lobby = result
-        # Уведомляем всех игроков
         for pid in lobby["players"]:
-            bot.send_message(pid, f"🎮 Игра в лобби {code} началась!\n\n👥 Игроки: {len(lobby['players'])}\n\nХод первого игрока!")
-        
-        # Здесь нужно запустить игровой цикл для лобби
+            game_text = get_lobby_game_text(lobby)
+            bot.send_message(pid, game_text)
         bot.reply_to(message, "✅ Игра началась!")
     else:
         bot.reply_to(message, result)
+
+@bot.message_handler(commands=['lobby_shop'])
+def lobby_shop_command(message):
+    user_id = message.from_user.id
+    
+    if user_id not in user_lobby:
+        bot.reply_to(message, "❌ Вы не в лобби")
+        return
+    
+    code = user_lobby[user_id]
+    lobby = active_lobbies.get(code)
+    
+    if not lobby:
+        bot.reply_to(message, "❌ Лобби не найдено")
+        return
+    
+    text = "🛒 МАГАЗИН ЛОББИ\n\nКупи предметы, чтобы использовать их в игре!\n\n"
+    for item_id, item in LOBBY_ITEMS.items():
+        text += f"{item['emoji']} {item['name']} — {item['price']}💎\n   {item['desc']}\n\n"
+    
+    send_with_image(message.chat.id, "shop", text, lobby_shop_kb(user_id))
+
+@bot.message_handler(commands=['my_items'])
+def my_items_command(message):
+    user_id = message.from_user.id
+    user = get_user(user_id)
+    items = user.get('lobby_items', {})
+    
+    if not items:
+        text = "📦 У вас нет предметов для лобби.\n\nКупить их можно командой /lobby_shop или в магазине лобби."
+    else:
+        text = "📦 ВАШИ ПРЕДМЕТЫ:\n\n"
+        for item_id, count in items.items():
+            item = LOBBY_ITEMS.get(item_id, {})
+            text += f"{item.get('emoji', '📦')} {item.get('name', item_id)}: {count} шт.\n"
+        text += "\nИспользовать предметы можно во время игры в лобби через меню предметов."
+    
+    bot.reply_to(message, text)
 
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
@@ -943,6 +1268,43 @@ def handle_all_messages(message):
     if message.text and message.text.startswith('/'):
         return
     
+    # Проверяем, есть ли активная игра в лобби
+    if user_id in user_lobby:
+        code = user_lobby[user_id]
+        lobby = active_lobbies.get(code)
+        if lobby and lobby["status"] == "playing":
+            guess_text = message.text.strip()
+            if guess_text:
+                result, msg = lobby_guess_letter(lobby, user_id, guess_text)
+                
+                if lobby["status"] == "finished":
+                    # Игра закончена, уведомляем всех
+                    final_text = f"🏆 ИГРА ЗАКОНЧЕНА! 🏆\n\n{msg}\n\nИтоговые очки:\n"
+                    for pid in lobby["players"]:
+                        user = get_user(pid)
+                        final_text += f"👤 {user.get('username', f'Игрок {pid}')} — {lobby['scores'].get(pid, 0)}💎\n"
+                    
+                    for pid in lobby["players"]:
+                        bot.send_message(pid, final_text)
+                    
+                    # Очищаем лобби
+                    del active_lobbies[code]
+                    for p in lobby["players"]:
+                        if p in user_lobby:
+                            del user_lobby[p]
+                else:
+                    # Обновляем сообщение для всех
+                    for pid in lobby["players"]:
+                        game_text = get_lobby_game_text(lobby)
+                        bot.send_message(pid, game_text)
+                
+                try:
+                    bot.delete_message(message.chat.id, message.message_id)
+                except:
+                    pass
+            return
+    
+    # Обычная игра
     if user_id in active_games and active_games[user_id].active:
         game = active_games[user_id]
         guess_text = message.text.strip()
@@ -1018,6 +1380,49 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ Это не ваша игра!", show_alert=True)
             return
         data = "wheel_spin"
+    elif data.startswith("lobby_buy_"):
+        item_id = data[10:]
+        item = LOBBY_ITEMS.get(item_id)
+        if item:
+            if user['crystals'] >= item['price']:
+                user['crystals'] -= item['price']
+                if 'lobby_items' not in user:
+                    user['lobby_items'] = {}
+                user['lobby_items'][item_id] = user['lobby_items'].get(item_id, 0) + 1
+                update_user(user_id, user)
+                bot.answer_callback_query(call.id, f"✅ Куплено: {item['name']}!", show_alert=True)
+            else:
+                bot.answer_callback_query(call.id, f"❌ Не хватает! Нужно {item['price']}💎", show_alert=True)
+            # Обновляем магазин
+            text = "🛒 МАГАЗИН ЛОББИ\n\nКупи предметы, чтобы использовать их в игре!\n\n"
+            for it_id, it in LOBBY_ITEMS.items():
+                text += f"{it['emoji']} {it['name']} — {it['price']}💎\n   {it['desc']}\n\n"
+            edit_with_image(call.message.chat.id, call.message.message_id, "shop", text, lobby_shop_kb(user_id))
+        return
+    elif data.startswith("lobby_use_"):
+        parts = data.split("_")
+        item_id = parts[2]
+        target_id = int(parts[3])
+        
+        if user_id not in user_lobby:
+            bot.answer_callback_query(call.id, "❌ Вы не в лобби", show_alert=True)
+            return
+        
+        code = user_lobby[user_id]
+        lobby = active_lobbies.get(code)
+        
+        if not lobby or lobby["status"] != "playing":
+            bot.answer_callback_query(call.id, "❌ Игра не активна", show_alert=True)
+            return
+        
+        success, msg = use_lobby_item(lobby, user_id, target_id, item_id)
+        bot.answer_callback_query(call.id, msg, show_alert=True)
+        
+        # Обновляем игровое сообщение
+        for pid in lobby["players"]:
+            game_text = get_lobby_game_text(lobby)
+            bot.send_message(pid, game_text)
+        return
     
     if data == "back_to_main":
         text = f"""{texts["game_title"]}
@@ -1069,7 +1474,7 @@ def callback_handler(call):
         for pid in lobby["players"]:
             u = get_user(pid)
             prefix = "👑 " if pid == lobby["creator"] else "👤 "
-            players.append(f"{prefix}{u.get('username', f'Игрок {pid}')}")
+            players.append(f"{prefix}{u.get('username', f'Игрок {pid}')} — {lobby['scores'].get(pid, 0)}💎")
         
         text = f"""🎲 ИНФОРМАЦИЯ О ЛОББИ
 
@@ -1097,6 +1502,18 @@ def callback_handler(call):
 {texts["stats_crystals"].format(crystals=user['crystals'])}
 {texts["stats_wins"].format(wins=user['wins'])}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "main", text, lobby_kb(user_id))
+    
+    elif data == "lobby_shop":
+        if user_id not in user_lobby:
+            bot.answer_callback_query(call.id, "❌ Вы не в лобби", show_alert=True)
+            return
+        
+        text = "🛒 МАГАЗИН ЛОББИ\n\nКупи предметы, чтобы использовать их в игре!\n\n"
+        for item_id, item in LOBBY_ITEMS.items():
+            text += f"{item['emoji']} {item['name']} — {item['price']}💎\n   {item['desc']}\n\n"
+        
+        edit_with_image(call.message.chat.id, call.message.message_id, "shop", text, lobby_shop_kb(user_id))
+        bot.answer_callback_query(call.id)
     
     elif data == "start_lobby":
         if user_id not in user_lobby:
@@ -1127,7 +1544,8 @@ def callback_handler(call):
         if success:
             lobby = result
             for pid in lobby["players"]:
-                bot.send_message(pid, f"🎮 Игра в лобби {code} началась!\n\n👥 Игроков: {len(lobby['players'])}\n\nХод первого игрока!")
+                game_text = get_lobby_game_text(lobby)
+                bot.send_message(pid, game_text)
             
             bot.answer_callback_query(call.id, "✅ Игра началась!")
             text = f"""{texts["game_title"]}
@@ -1197,8 +1615,12 @@ def callback_handler(call):
     
     elif data == "top_crystals":
         users = load_json(USERS_FILE)
-        top = [{'username': u.get('username', f"User_{uid}"), 'crystals': u.get('crystals', 0)} for uid, u in users.items()]
+        top = []
+        for uid, u in users.items():
+            username = u.get('username', f"User_{uid}")
+            top.append({'username': username, 'crystals': u.get('crystals', 0)})
         top.sort(key=lambda x: x['crystals'], reverse=True)
+        
         text = f"{texts['top_crystals']}\n\n"
         for i, u in enumerate(top[:10], 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
@@ -1208,8 +1630,12 @@ def callback_handler(call):
     
     elif data == "top_wins":
         users = load_json(USERS_FILE)
-        top = [{'username': u.get('username', f"User_{uid}"), 'wins': u.get('wins', 0)} for uid, u in users.items()]
+        top = []
+        for uid, u in users.items():
+            username = u.get('username', f"User_{uid}")
+            top.append({'username': username, 'wins': u.get('wins', 0)})
         top.sort(key=lambda x: x['wins'], reverse=True)
+        
         text = f"{texts['top_wins']}\n\n"
         for i, u in enumerate(top[:10], 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
@@ -1219,8 +1645,12 @@ def callback_handler(call):
     
     elif data == "top_streak":
         users = load_json(USERS_FILE)
-        top = [{'username': u.get('username', f"User_{uid}"), 'streak': u.get('best_streak', 0)} for uid, u in users.items()]
+        top = []
+        for uid, u in users.items():
+            username = u.get('username', f"User_{uid}")
+            top.append({'username': username, 'streak': u.get('best_streak', 0)})
         top.sort(key=lambda x: x['streak'], reverse=True)
+        
         text = f"{texts['top_streak']}\n\n"
         for i, u in enumerate(top[:10], 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
@@ -1239,6 +1669,7 @@ def callback_handler(call):
             username = users.get(str(uid), {}).get('username', f"User_{uid}")
             top.append({'username': username, 'stars': stars})
         top.sort(key=lambda x: x['stars'], reverse=True)
+        
         text = f"{texts['top_donations']}\n\n"
         for i, u in enumerate(top[:10], 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
@@ -1285,17 +1716,17 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
     
     elif data == "wheel_spin":
-        prize, price = spin_wheel(user_id)
+        prize, price, item = spin_wheel(user_id)
         
         if prize is None:
             text = f"""{texts["wheel_title"]}
 
 {texts["wheel_no_money"].format(price=price)}"""
         else:
-            if prize >= 100:
-                text = texts["wheel_win"].format(prize=prize)
+            if isinstance(prize, int):
+                text = texts["wheel_win"].format(prize=f"{prize} кристаллов")
             else:
-                text = texts["wheel_lose"].format(prize=prize)
+                text = texts["wheel_win"].format(prize=prize)
         
         edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, lobby_kb(user_id))
         bot.answer_callback_query(call.id)
@@ -1338,7 +1769,6 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ У вас уже есть игра!", show_alert=True)
             return
         
-        # Проверяем, не в лобби ли пользователь
         if user_id in user_lobby:
             bot.answer_callback_query(call.id, "❌ Вы в лобби! Используйте /leave_lobby чтобы играть одному", show_alert=True)
             return
@@ -1494,6 +1924,8 @@ def welcome_new_member(message):
 /create_lobby ru/en — создать лобби
 /join КОД — присоединиться к лобби
 /start_lobby — начать игру (только создатель)
+/lobby_shop — магазин предметов для лобби
+/my_items — посмотреть свои предметы
 
 ⭐ Поддержать проект:
 💰 /donate → поддержать бота Telegram Stars
@@ -1519,8 +1951,8 @@ def welcome_new_member(message):
 if __name__ == "__main__":
     print("🤖 Бот запущен")
     print("🎮 УГАДАЙ СЛОВО")
-    print("🎲 ЛОББИ: /create_lobby, /join, /start_lobby")
-    print("🎁 Ежедневный бонус и колесо фортуны")
+    print("🎲 ЛОББИ: /create_lobby, /join, /start_lobby, /lobby_shop")
+    print("🎡 КОЛЕСО ФОРТУНЫ с предметами")
     print("🔧 Админ-панель: /admin")
     try:
         bot.infinity_polling(timeout=60)
