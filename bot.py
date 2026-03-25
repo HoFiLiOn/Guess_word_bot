@@ -10,7 +10,6 @@ import json
 import os
 import string
 from datetime import datetime, timedelta
-from collections import defaultdict
 
 TOKEN = "7766594100:AAH7j4yGEW5Tqoiu8IguYh0Mn3g7lMbPwj8"
 bot = telebot.TeleBot(TOKEN)
@@ -46,137 +45,29 @@ DIFFICULTY = {
     "hard": {"name": "🔥 Сложная", "min_len": 7, "max_len": 9, "reward": 100}
 }
 
-# ========== НЕЙРОСЕТЬ СО ВСЕМИ ПРАВИЛАМИ ==========
-class LanguageNeuralNetwork:
-    def __init__(self, lang):
-        self.lang = lang
-        
-        if lang == "ru":
-            self.vowels = "АЕЁИОУЫЭЮЯ"
-            self.consonants = "БВГДЖЗЙКЛМНПРСТФХЦЧШЩ"
-            self.letter_freq = {
-                'О': 0.109, 'Е': 0.084, 'А': 0.075, 'И': 0.074, 'Н': 0.067,
-                'Т': 0.063, 'С': 0.055, 'Р': 0.048, 'В': 0.045, 'Л': 0.044,
-                'К': 0.034, 'М': 0.032, 'Д': 0.030, 'П': 0.028, 'У': 0.026,
-                'Я': 0.025, 'Ы': 0.024, 'Ь': 0.023, 'Г': 0.022, 'З': 0.020,
-                'Б': 0.019, 'Ч': 0.018, 'Й': 0.016, 'Х': 0.015, 'Ж': 0.014,
-                'Ш': 0.012, 'Ю': 0.010, 'Ц': 0.009, 'Щ': 0.008, 'Э': 0.007,
-                'Ф': 0.006, 'Ъ': 0.003
-            }
-            self.prefixes = ["ПО", "ЗА", "НА", "ПЕ", "РА", "СО", "МО", "ВО", "ДО", "КО", "ОТ", "ОБ", "ВЗ", "ИЗ", "ПРЕ", "ПРИ"]
-            self.roots = ["ДОМ", "ЛЕС", "САД", "РОЗ", "МАМ", "ПАП", "БРАТ", "СЕСТР", "ДРУГ", "ГОРОД", "СОЛНЦ", "ЗВЕЗД", "КНИГ", "СТОЛ", "ОКН", "ДВЕР", "РУЧК", "МАШИН", "УЛИЦ", "ПАРК", "ЛУН", "ЗЕМЛ", "ВОД", "ОГН", "ВЕТР", "СНЕГ", "ДОЖД", "ЛЕТ", "ЗИМ", "ВЕСН", "ОСЕН", "УТР", "ВЕЧЕР", "СВЕТ", "ТЕН", "ГОЛОС", "СЛОВ", "БУКВ", "СТРАН"]
-            self.suffixes = ["ОВ", "ЕВ", "ИН", "НИК", "ЧИК", "ЩИК", "ТЕЛЬ", "ОСТЬ", "ЕНИ", "АНИ", "ИЗМ", "ИСТ", "СК", "К", "ЧК", "Н", "Л", "ЛК", "ОНК", "ЕНЬК", "УШК", "ЮШК", "ЫШК", "ИЩ", "АЧ", "ЯЧ", "УН", "ЮН", "АРЬ", "ЯРЬ"]
-            self.endings = ["А", "Я", "У", "Ю", "ОМ", "ЕМ", "Ы", "И", "ОВ", "ЕВ", "АМ", "ЯМ", "АМИ", "ЯМИ", "АХ", "ЯХ", "Й", "ИЙ", "ЫЙ", "ОЙ", "ИЕ", "ОЕ", "АЯ", "ЯЯ"]
-            self.real_words = [
-                "КОТ", "ДОМ", "ЛЕС", "САД", "РОЗА", "МАМА", "ПАПА", "СЫН", "ДОЧЬ", "БРАТ",
-                "СЕСТРА", "ДРУГ", "МИР", "ДЕНЬ", "НОЧЬ", "ГОРОД", "СОЛНЦЕ", "ЗВЕЗДА", "КНИГА",
-                "СТОЛ", "СТУЛ", "ОКНО", "ДВЕРЬ", "РУЧКА", "МАШИНА", "УЛИЦА", "ПАРК", "ЛУНА",
-                "ЗЕМЛЯ", "ВОДА", "ОГОНЬ", "ВЕТЕР", "СНЕГ", "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА",
-                "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ", "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА"
-            ]
-        else:
-            self.vowels = "AEIOUY"
-            self.consonants = "BCDFGHJKLMNPQRSTVWXZ"
-            self.letter_freq = {
-                'E': 0.127, 'T': 0.090, 'A': 0.081, 'O': 0.075, 'I': 0.069,
-                'N': 0.067, 'S': 0.063, 'H': 0.060, 'R': 0.059, 'D': 0.042,
-                'L': 0.040, 'C': 0.027, 'U': 0.027, 'M': 0.024, 'W': 0.023,
-                'F': 0.022, 'G': 0.020, 'Y': 0.019, 'P': 0.019, 'B': 0.014,
-                'V': 0.012, 'K': 0.008, 'J': 0.001, 'X': 0.001, 'Q': 0.001, 'Z': 0.001
-            }
-            self.prefixes = ["UN", "RE", "IN", "IM", "DIS", "PRE", "POST", "ANTI", "SUB", "SUPER", "INTER", "INTRA", "MIS", "OVER", "UNDER"]
-            self.roots = ["ACT", "FORM", "PORT", "TRACT", "DUC", "SPECT", "DICT", "SCRIP", "CAP", "CED", "CESS", "MIT", "MISS", "PEL", "PULS", "VERT", "VERS", "FACT", "FECT", "FIC", "FLEX", "FLECT", "JUNCT", "JOIN", "POS", "PON", "SIST"]
-            self.suffixes = ["ING", "ED", "ER", "EST", "LY", "FUL", "LESS", "NESS", "MENT", "TION", "SION", "ABLE", "IBLE", "AL", "IAL", "IC", "IVE", "ATIVE", "ITIVE", "OUS", "IOUS", "EN", "IZE", "ISE", "IFY", "ATE", "TURE", "SURE"]
-            self.endings = ["S", "ES", "IES", "ED", "ING", "ER", "EST", "LY", "FUL", "LESS", "NESS", "MENT", "TION", "SION", "ABLE", "IBLE", "AL", "IC", "IVE"]
-            self.real_words = [
-                "CAT", "DOG", "SUN", "MOON", "STAR", "TREE", "FLOWER", "BIRD", "FISH",
-                "HOUSE", "CAR", "MOM", "DAD", "SON", "DAUGHTER", "BROTHER", "SISTER",
-                "FRIEND", "LOVE", "HOPE", "WATER", "FIRE", "EARTH", "WIND", "CLOUD",
-                "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT"
-            ]
-    
-    def _get_weighted_letter(self):
-        letters = list(self.letter_freq.keys())
-        weights = list(self.letter_freq.values())
-        return random.choices(letters, weights=weights, k=1)[0]
-    
-    def _is_readable(self, word):
-        if len(word) < 3:
-            return False
-        if not any(c in self.vowels for c in word):
-            return False
-        cons_seq = 0
-        for c in word:
-            if c in self.consonants:
-                cons_seq += 1
-                if cons_seq >= 3:
-                    return False
-            else:
-                cons_seq = 0
-        for i in range(len(word) - 2):
-            if word[i] == word[i+1] == word[i+2]:
-                return False
-        return True
-    
-    def generate_word(self, min_len=3, max_len=8):
-        max_attempts = 50
-        
-        for _ in range(max_attempts):
-            word_type = random.choice(["real", "prefix_root", "root_suffix", "prefix_root_suffix"])
-            
-            if word_type == "real" and random.random() < 0.5:
-                return random.choice(self.real_words)
-            
-            length = random.randint(min_len, max_len)
-            
-            if word_type == "prefix_root" and self.prefixes:
-                prefix = random.choice(self.prefixes)
-                root_len = max(3, length - len(prefix))
-                root = self._generate_root(root_len)
-                word = prefix + root
-            elif word_type == "root_suffix" and self.suffixes:
-                root_len = max(3, length - 3)
-                root = self._generate_root(root_len)
-                suffix = random.choice(self.suffixes)
-                word = root + suffix
-            elif word_type == "prefix_root_suffix" and self.prefixes and self.suffixes:
-                prefix = random.choice(self.prefixes)
-                root_len = max(3, length - len(prefix) - 3)
-                root = self._generate_root(root_len)
-                suffix = random.choice(self.suffixes)
-                word = prefix + root + suffix
-            else:
-                word = self._generate_root(length)
-            
-            word = word.upper()
-            if random.random() < 0.3 and self.endings:
-                word += random.choice(self.endings)
-            
-            word = word[:length]
-            
-            if self._is_readable(word) and len(word) >= min_len:
-                return word
-        
-        return random.choice(self.real_words)
-    
-    def _generate_root(self, length):
-        if self.roots and random.random() < 0.4:
-            root = random.choice(self.roots)
-            if len(root) <= length:
-                return root
-        word = []
-        word.append(self._get_weighted_letter())
-        for i in range(1, length):
-            if word[-1] in self.consonants:
-                word.append(random.choice(self.vowels))
-            else:
-                word.append(random.choice(self.consonants))
-        return ''.join(word)
+# ========== ОГРОМНЫЙ СЛОВАРЬ РЕАЛЬНЫХ СЛОВ ==========
+RUSSIAN_WORDS = [
+    "КОТ", "ДОМ", "ЛЕС", "САД", "РОЗА", "МАМА", "ПАПА", "СЫН", "ДОЧЬ", "БРАТ",
+    "СЕСТРА", "ДРУГ", "МИР", "ДЕНЬ", "НОЧЬ", "ГОД", "ЧАС", "МИНУТА", "СЕКУНДА",
+    "ГОРОД", "СОЛНЦЕ", "ЗВЕЗДА", "КНИГА", "СТОЛ", "СТУЛ", "ОКНО", "ДВЕРЬ", "РУЧКА",
+    "МАШИНА", "УЛИЦА", "ПАРК", "ЛУНА", "ЗЕМЛЯ", "ВОДА", "ОГОНЬ", "ВЕТЕР", "СНЕГ",
+    "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА", "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ",
+    "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА", "ПЛАНЕТА", "ГАЛАКТИКА", "ПРИРОДА",
+    "ЖИВОТНОЕ", "РАСТЕНИЕ", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА",
+    "УЧИТЕЛЬ", "РАБОТА", "ДЕНЬГИ", "ВРЕМЯ", "МЫСЛЬ", "ИДЕЯ", "МЕЧТА", "НАДЕЖДА",
+    "СВОБОДА", "ПРАВДА", "ЧЕСТЬ", "ДОСТОИНСТВО", "БЕСКОНЕЧНОСТЬ", "ВСЕЛЕННАЯ"
+]
 
-neural_networks = {
-    "ru": LanguageNeuralNetwork("ru"),
-    "en": LanguageNeuralNetwork("en")
-}
+ENGLISH_WORDS = [
+    "CAT", "DOG", "SUN", "MOON", "STAR", "TREE", "FLOWER", "BIRD", "FISH",
+    "HOUSE", "CAR", "MOM", "DAD", "SON", "DAUGHTER", "BROTHER", "SISTER",
+    "FRIEND", "LOVE", "HOPE", "WATER", "FIRE", "EARTH", "WIND", "CLOUD",
+    "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT",
+    "CITY", "TOWN", "STREET", "PARK", "RIVER", "LAKE", "SEA", "OCEAN",
+    "MOUNTAIN", "FOREST", "DESERT", "ISLAND", "SKY", "UNIVERSE", "GALAXY",
+    "INFINITY", "ETERNITY", "DREAM", "HAPPINESS", "FREEDOM", "JUSTICE",
+    "HONOR", "TRUTH", "WISDOM", "KNOWLEDGE", "POWER", "STRENGTH", "PEACE"
+]
 
 # ========== ТЕКСТЫ ==========
 TEXTS = {
@@ -203,9 +94,6 @@ TEXTS = {
         "shop_back": "◀️ Назад",
         "top_title": "🏆 ТАБЛИЦА ЛИДЕРОВ",
         "top_crystals": "💰 ТОП ПО КРИСТАЛЛАМ",
-        "top_wins": "🏆 ТОП ПО ПОБЕДАМ",
-        "top_streak": "🔥 ТОП ПО СЕРИИ",
-        "top_donations": "⭐ ТОП ПО ДОНАТАМ",
         "stats_title": "📊 ТВОЯ СТАТИСТИКА",
         "stats_crystals": "💰 Кристаллов: {crystals}",
         "stats_wins": "🏆 Побед: {wins}",
@@ -234,7 +122,6 @@ TEXTS = {
         "wheel_title": "🎡 КОЛЕСО ФОРТУНЫ",
         "wheel_price": "💎 Стоимость вращения: {price}",
         "wheel_win": "🎉 ПОЗДРАВЛЯЕМ! 🎉\n\n💰 Вы выиграли {prize}!",
-        "wheel_lose": "😢 Вам выпало {prize}...\n\n💪 В следующий раз повезёт!",
         "wheel_no_money": "❌ Не хватает кристаллов! Нужно {price}",
         "casino_title": "🎰 КАЗИНО",
         "casino_games": "🎲 Выбери игру:",
@@ -318,9 +205,6 @@ TEXTS = {
         "shop_back": "◀️ Back",
         "top_title": "🏆 LEADERBOARD",
         "top_crystals": "💰 TOP BY CRYSTALS",
-        "top_wins": "🏆 TOP BY WINS",
-        "top_streak": "🔥 TOP BY STREAK",
-        "top_donations": "⭐ TOP BY DONATIONS",
         "stats_title": "📊 YOUR STATISTICS",
         "stats_crystals": "💰 Crystals: {crystals}",
         "stats_wins": "🏆 Wins: {wins}",
@@ -349,7 +233,6 @@ TEXTS = {
         "wheel_title": "🎡 WHEEL OF FORTUNE",
         "wheel_price": "💎 Spin cost: {price}",
         "wheel_win": "🎉 CONGRATULATIONS! 🎉\n\n💰 You won {prize}!",
-        "wheel_lose": "😢 You got {prize}...\n\n💪 Better luck next time!",
         "wheel_no_money": "❌ Not enough crystals! Need {price}",
         "casino_title": "🎰 CASINO",
         "casino_games": "🎲 Choose a game:",
@@ -443,8 +326,7 @@ def get_user(user_id):
             'lang': 'ru',
             'donated_stars': 0,
             'last_daily': None,
-            'daily_streak': 0,
-            'avatar_url': None
+            'daily_streak': 0
         }
         save_json(USERS_FILE, users)
     return users[uid]
@@ -601,9 +483,21 @@ def play_casino(user_id, game_type):
     return None, price, None
 
 def get_word(lang, difficulty):
-    """Генерирует слово заданной сложности"""
+    """Берёт случайное реальное слово из словаря нужной длины"""
     diff = DIFFICULTY[difficulty]
-    return neural_networks[lang].generate_word(diff["min_len"], diff["max_len"])
+    min_len = diff["min_len"]
+    max_len = diff["max_len"]
+    
+    if lang == "ru":
+        words = [w for w in RUSSIAN_WORDS if min_len <= len(w) <= max_len]
+        if not words:
+            words = RUSSIAN_WORDS
+        return random.choice(words)
+    else:
+        words = [w for w in ENGLISH_WORDS if min_len <= len(w) <= max_len]
+        if not words:
+            words = ENGLISH_WORDS
+        return random.choice(words)
 
 # ========== КЛАСС ИГРЫ ==========
 class Game:
@@ -787,12 +681,9 @@ def shop_kb(user_id):
 def top_kb(user_id):
     lang = get_user_lang(user_id)
     texts = TEXTS[lang]
-    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton(texts["top_crystals"], callback_data="top_crystals"),
-        types.InlineKeyboardButton(texts["top_wins"], callback_data="top_wins"),
-        types.InlineKeyboardButton(texts["top_streak"], callback_data="top_streak"),
-        types.InlineKeyboardButton(texts["top_donations"], callback_data="top_donations"),
         types.InlineKeyboardButton(texts["buttons"]["back"], callback_data="back_to_main")
     )
     return markup
@@ -862,7 +753,6 @@ def edit_with_image(chat_id, message_id, image_key, text, reply_markup=None):
 
 # ========== КОМАНДЫ ==========
 active_games = {}  # chat_id -> Game
-current_menu = {}  # user_id -> (menu_type, message_id)
 
 @bot.message_handler(commands=['start', 'guess', 'menu'])
 def start_command(message):
@@ -884,11 +774,7 @@ def start_command(message):
 {texts["stats_wins"].format(wins=user['wins'])}
 {texts["stats_games"].format(games=user['games'])}"""
     
-    sent = send_with_image(message.chat.id, "main", text, main_menu_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("main", sent['message_id'])
-    else:
-        current_menu[user_id] = ("main", sent.message_id)
+    send_with_image(message.chat.id, "main", text, main_menu_kb(user_id))
 
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
@@ -906,44 +792,42 @@ def stats_command(message):
 {texts["stats_best_streak"].format(best_streak=user['best_streak'])}
 {texts["stats_donated"].format(donated=user.get('donated_stars', 0))}"""
     
-    sent = send_with_image(message.chat.id, "stats", text, main_menu_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("stats", sent['message_id'])
-    else:
-        current_menu[user_id] = ("stats", sent.message_id)
+    send_with_image(message.chat.id, "stats", text, main_menu_kb(user_id))
 
 @bot.message_handler(commands=['top'])
 def top_command(message):
     user_id = message.from_user.id
     lang = get_user_lang(user_id)
     texts = TEXTS[lang]
-    sent = send_with_image(message.chat.id, "top", texts["top_title"], top_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("top", sent['message_id'])
-    else:
-        current_menu[user_id] = ("top", sent.message_id)
+    
+    # Сразу показываем топ по кристаллам
+    users = load_json(USERS_FILE)
+    top = []
+    for uid, u in users.items():
+        username = u.get('username', f"User_{uid}")
+        top.append({'username': username, 'crystals': u.get('crystals', 0)})
+    top.sort(key=lambda x: x['crystals'], reverse=True)
+    
+    text = f"{texts['top_crystals']}\n\n"
+    for i, u in enumerate(top[:10], 1):
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        text += f"{medal} {u['username']} — {u['crystals']}💎\n"
+    
+    send_with_image(message.chat.id, "top", text, top_kb(user_id))
 
 @bot.message_handler(commands=['shop'])
 def shop_command(message):
     user_id = message.from_user.id
     lang = get_user_lang(user_id)
     texts = TEXTS[lang]
-    sent = send_with_image(message.chat.id, "shop", texts["shop_title"], shop_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("shop", sent['message_id'])
-    else:
-        current_menu[user_id] = ("shop", sent.message_id)
+    send_with_image(message.chat.id, "shop", texts["shop_title"], shop_kb(user_id))
 
 @bot.message_handler(commands=['lang'])
 def lang_command(message):
     user_id = message.from_user.id
     lang = get_user_lang(user_id)
     texts = TEXTS[lang]
-    sent = send_with_image(message.chat.id, "main", texts["lang_title"], lang_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("lang", sent['message_id'])
-    else:
-        current_menu[user_id] = ("lang", sent.message_id)
+    send_with_image(message.chat.id, "main", texts["lang_title"], lang_kb(user_id))
 
 @bot.message_handler(commands=['donate'])
 def donate_command(message):
@@ -953,11 +837,7 @@ def donate_command(message):
     text = f"""{texts["donate_title"]}
 
 {texts["donate_desc"]}"""
-    sent = send_with_image(message.chat.id, "donate", text, donate_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("donate", sent['message_id'])
-    else:
-        current_menu[user_id] = ("donate", sent.message_id)
+    send_with_image(message.chat.id, "donate", text, donate_kb(user_id))
 
 @bot.message_handler(commands=['daily'])
 def daily_command(message):
@@ -978,11 +858,7 @@ def daily_command(message):
 {texts["daily_reward"].format(crystals=bonus)}
 {texts["daily_streak"].format(streak=streak)}"""
     
-    sent = send_with_image(message.chat.id, "stats", text, main_menu_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("daily", sent['message_id'])
-    else:
-        current_menu[user_id] = ("daily", sent.message_id)
+    send_with_image(message.chat.id, "stats", text, main_menu_kb(user_id))
 
 @bot.message_handler(commands=['wheel'])
 def wheel_command(message):
@@ -994,11 +870,7 @@ def wheel_command(message):
 
 {texts["wheel_price"].format(price=50)}"""
     
-    sent = send_with_image(message.chat.id, "stats", text, wheel_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("wheel", sent['message_id'])
-    else:
-        current_menu[user_id] = ("wheel", sent.message_id)
+    send_with_image(message.chat.id, "stats", text, wheel_kb(user_id))
 
 @bot.message_handler(commands=['casino'])
 def casino_command(message):
@@ -1010,11 +882,7 @@ def casino_command(message):
 
 {texts["casino_games"]}"""
     
-    sent = send_with_image(message.chat.id, "casino", text, casino_kb(user_id))
-    if isinstance(sent, dict):
-        current_menu[user_id] = ("casino", sent['message_id'])
-    else:
-        current_menu[user_id] = ("casino", sent.message_id)
+    send_with_image(message.chat.id, "casino", text, casino_kb(user_id))
 
 @bot.message_handler(commands=['help'])
 def help_command(message):
@@ -1043,7 +911,6 @@ def handle_all_messages(message):
     if message.text and message.text.startswith('/'):
         return
     
-    # Проверяем, есть ли активная игра в этом чате
     if chat_id in active_games and active_games[chat_id].active:
         game = active_games[chat_id]
         guess_text = message.text.strip()
@@ -1053,7 +920,6 @@ def handle_all_messages(message):
             result, msg = game.guess_letter(guess_text, user_id, username)
             
             if not game.active:
-                # Игра закончена
                 bot.edit_message_text(msg, game.chat_id, game.message_id)
                 del active_games[chat_id]
                 user = get_user(user_id)
@@ -1129,13 +995,11 @@ def callback_handler(call):
 {texts["stats_crystals"].format(crystals=user['crystals'])}
 {texts["stats_wins"].format(wins=user['wins'])}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "main", text, main_menu_kb(user_id))
-        current_menu[user_id] = ("main", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data == "start_game":
         text = texts["difficulty_title"]
         edit_with_image(call.message.chat.id, call.message.message_id, "game", text, difficulty_kb(user_id))
-        current_menu[user_id] = ("difficulty", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data in ["difficulty_easy", "difficulty_medium", "difficulty_hard"]:
@@ -1157,7 +1021,6 @@ def callback_handler(call):
 
 {texts["casino_games"]}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "casino", text, casino_kb(user_id))
-        current_menu[user_id] = ("casino", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data in ["casino_coin", "casino_dice", "casino_slot", "casino_blackjack"]:
@@ -1171,13 +1034,7 @@ def callback_handler(call):
         else:
             text = texts["casino_lose"].format(lose=price) + f"\n\n{result}"
         
-        # Возвращаем в казино
-        casino_text = f"""{texts["casino_title"]}
-
-{texts["casino_games"]}"""
-        edit_with_image(call.message.chat.id, call.message.message_id, "casino", casino_text, casino_kb(user_id))
         bot.send_message(chat_id, text)
-        current_menu[user_id] = ("casino", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data == "donate":
@@ -1185,13 +1042,11 @@ def callback_handler(call):
 
 {texts["donate_desc"]}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "donate", text, donate_kb(user_id))
-        current_menu[user_id] = ("donate", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data == "donate_stars_menu":
         text = f"{texts['donate_stars_title']}\n\n{texts['donate_desc']}"
         edit_with_image(call.message.chat.id, call.message.message_id, "donate", text, donate_stars_kb(user_id))
-        current_menu[user_id] = ("donate_stars", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data.startswith("donate_") and data != "donate_stars_menu":
@@ -1220,7 +1075,6 @@ def callback_handler(call):
     
     elif data == "shop":
         edit_with_image(call.message.chat.id, call.message.message_id, "shop", texts["shop_title"], shop_kb(user_id))
-        current_menu[user_id] = ("shop", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data.startswith("buy_"):
@@ -1234,11 +1088,23 @@ def callback_handler(call):
         if chat_id in active_games and active_games[chat_id].active:
             active_games[chat_id].effects[item_id] = True
         bot.answer_callback_query(call.id, f"✅ Куплено! -{prices[item_id]}💎", show_alert=True)
+        bot.send_message(chat_id, f"✅ Вы купили {texts[f'shop_{item_id}']} за {prices[item_id]}💎!")
         edit_with_image(call.message.chat.id, call.message.message_id, "shop", texts["shop_title"], shop_kb(user_id))
     
     elif data == "top":
-        edit_with_image(call.message.chat.id, call.message.message_id, "top", texts["top_title"], top_kb(user_id))
-        current_menu[user_id] = ("top", call.message.message_id)
+        users = load_json(USERS_FILE)
+        top = []
+        for uid, u in users.items():
+            username = u.get('username', f"User_{uid}")
+            top.append({'username': username, 'crystals': u.get('crystals', 0)})
+        top.sort(key=lambda x: x['crystals'], reverse=True)
+        
+        text = f"{texts['top_crystals']}\n\n"
+        for i, u in enumerate(top[:10], 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+            text += f"{medal} {u['username']} — {u['crystals']}💎\n"
+        
+        edit_with_image(call.message.chat.id, call.message.message_id, "top", text, top_kb(user_id))
         bot.answer_callback_query(call.id)
     
     elif data == "top_crystals":
@@ -1246,66 +1112,15 @@ def callback_handler(call):
         top = []
         for uid, u in users.items():
             username = u.get('username', f"User_{uid}")
-            avatar = u.get('avatar_url')
-            top.append({'username': username, 'crystals': u.get('crystals', 0), 'avatar': avatar})
+            top.append({'username': username, 'crystals': u.get('crystals', 0)})
         top.sort(key=lambda x: x['crystals'], reverse=True)
         
         text = f"{texts['top_crystals']}\n\n"
         for i, u in enumerate(top[:10], 1):
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
             text += f"{medal} {u['username']} — {u['crystals']}💎\n"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=top_kb(user_id))
-        bot.answer_callback_query(call.id)
-    
-    elif data == "top_wins":
-        users = load_json(USERS_FILE)
-        top = []
-        for uid, u in users.items():
-            username = u.get('username', f"User_{uid}")
-            top.append({'username': username, 'wins': u.get('wins', 0)})
-        top.sort(key=lambda x: x['wins'], reverse=True)
         
-        text = f"{texts['top_wins']}\n\n"
-        for i, u in enumerate(top[:10], 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            text += f"{medal} {u['username']} — {u['wins']}🏆\n"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=top_kb(user_id))
-        bot.answer_callback_query(call.id)
-    
-    elif data == "top_streak":
-        users = load_json(USERS_FILE)
-        top = []
-        for uid, u in users.items():
-            username = u.get('username', f"User_{uid}")
-            top.append({'username': username, 'streak': u.get('best_streak', 0)})
-        top.sort(key=lambda x: x['streak'], reverse=True)
-        
-        text = f"{texts['top_streak']}\n\n"
-        for i, u in enumerate(top[:10], 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            text += f"{medal} {u['username']} — {u['streak']}🔥\n"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=top_kb(user_id))
-        bot.answer_callback_query(call.id)
-    
-    elif data == "top_donations":
-        donations = load_json(DONATIONS_FILE)
-        user_donations = {}
-        for d in donations.get('donations', []):
-            user_donations[d['user_id']] = user_donations.get(d['user_id'], 0) + d['stars']
-        users = load_json(USERS_FILE)
-        top = []
-        for uid, stars in user_donations.items():
-            username = users.get(str(uid), {}).get('username', f"User_{uid}")
-            top.append({'username': username, 'stars': stars})
-        top.sort(key=lambda x: x['stars'], reverse=True)
-        
-        text = f"{texts['top_donations']}\n\n"
-        for i, u in enumerate(top[:10], 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            text += f"{medal} {u['username']} — {u['stars']}⭐\n"
-        if not top:
-            text += "Пока нет донатов"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=top_kb(user_id))
+        bot.send_message(chat_id, text, reply_markup=top_kb(user_id))
         bot.answer_callback_query(call.id)
     
     elif data == "stats":
@@ -1318,7 +1133,6 @@ def callback_handler(call):
 {texts["stats_best_streak"].format(best_streak=user['best_streak'])}
 {texts["stats_donated"].format(donated=user.get('donated_stars', 0))}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, main_menu_kb(user_id))
-        current_menu[user_id] = ("stats", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data == "daily":
@@ -1336,7 +1150,6 @@ def callback_handler(call):
 {texts["daily_streak"].format(streak=streak)}"""
         
         edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, main_menu_kb(user_id))
-        current_menu[user_id] = ("daily", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data == "wheel":
@@ -1344,31 +1157,26 @@ def callback_handler(call):
 
 {texts["wheel_price"].format(price=50)}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, wheel_kb(user_id))
-        current_menu[user_id] = ("wheel", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data == "wheel_spin":
         prize, price = spin_wheel(user_id)
         
         if prize is None:
-            text = f"""{texts["wheel_title"]}
-
-{texts["wheel_no_money"].format(price=price)}"""
+            text = texts["wheel_no_money"].format(price=price)
         else:
             text = texts["wheel_win"].format(prize=f"{prize} кристаллов")
         
-        # Возвращаем в колесо фортуны
+        bot.send_message(chat_id, text)
+        bot.answer_callback_query(call.id)
+        # Возвращаем в меню колеса
         wheel_text = f"""{texts["wheel_title"]}
 
 {texts["wheel_price"].format(price=50)}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "stats", wheel_text, wheel_kb(user_id))
-        bot.send_message(chat_id, text)
-        current_menu[user_id] = ("wheel", call.message.message_id)
-        bot.answer_callback_query(call.id)
     
     elif data == "lang":
         edit_with_image(call.message.chat.id, call.message.message_id, "main", texts["lang_title"], lang_kb(user_id))
-        current_menu[user_id] = ("lang", call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif data == "lang_ru":
@@ -1380,7 +1188,6 @@ def callback_handler(call):
 {texts["stats_crystals"].format(crystals=user['crystals'])}
 {texts["stats_wins"].format(wins=user['wins'])}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "main", text, main_menu_kb(user_id))
-        current_menu[user_id] = ("main", call.message.message_id)
     
     elif data == "lang_en":
         user['lang'] = 'en'
@@ -1392,7 +1199,6 @@ def callback_handler(call):
 {texts["stats_crystals"].format(crystals=user['crystals'])}
 {texts["stats_wins"].format(wins=user['wins'])}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "main", text, main_menu_kb(user_id))
-        current_menu[user_id] = ("main", call.message.message_id)
     
     elif data == "help":
         text = f"""{texts["help_title"]}
@@ -1440,7 +1246,6 @@ def callback_handler(call):
 {texts["stats_crystals"].format(crystals=user['crystals'])}
 {texts["stats_wins"].format(wins=user['wins'])}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "main", text, main_menu_kb(user_id))
-        current_menu[user_id] = ("main", call.message.message_id)
     
     # Админ-панель
     elif data == "admin_stats":
@@ -1608,10 +1413,11 @@ def welcome_new_member(message):
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
     print("🤖 Бот запущен")
+    print(f"📚 Русских слов: {len(RUSSIAN_WORDS)}")
+    print(f"📚 Английских слов: {len(ENGLISH_WORDS)}")
     print("🎮 УГАДАЙ СЛОВО — общая игра в чате")
     print("🎰 КАЗИНО — умножай кристаллы")
     print("🎯 ВЫБОР СЛОЖНОСТИ")
-    print("🧠 НЕЙРОСЕТЬ со всеми правилами языка")
     print("🔧 Админ-панель: /admin")
     try:
         bot.infinity_polling(timeout=60)
