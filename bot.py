@@ -54,8 +54,7 @@ RUSSIAN_WORDS = [
     "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА", "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ",
     "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА", "ПЛАНЕТА", "ГАЛАКТИКА", "ПРИРОДА",
     "ЖИВОТНОЕ", "РАСТЕНИЕ", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА",
-    "УЧИТЕЛЬ", "РАБОТА", "ДЕНЬГИ", "ВРЕМЯ", "МЫСЛЬ", "ИДЕЯ", "МЕЧТА", "НАДЕЖДА",
-    "СВОБОДА", "ПРАВДА", "ЧЕСТЬ", "ДОСТОИНСТВО", "БЕСКОНЕЧНОСТЬ", "ВСЕЛЕННАЯ"
+    "УЧИТЕЛЬ", "РАБОТА", "ДЕНЬГИ", "ВРЕМЯ", "МЫСЛЬ", "ИДЕЯ", "МЕЧТА", "НАДЕЖДА"
 ]
 
 ENGLISH_WORDS = [
@@ -64,9 +63,7 @@ ENGLISH_WORDS = [
     "FRIEND", "LOVE", "HOPE", "WATER", "FIRE", "EARTH", "WIND", "CLOUD",
     "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT",
     "CITY", "TOWN", "STREET", "PARK", "RIVER", "LAKE", "SEA", "OCEAN",
-    "MOUNTAIN", "FOREST", "DESERT", "ISLAND", "SKY", "UNIVERSE", "GALAXY",
-    "INFINITY", "ETERNITY", "DREAM", "HAPPINESS", "FREEDOM", "JUSTICE",
-    "HONOR", "TRUTH", "WISDOM", "KNOWLEDGE", "POWER", "STRENGTH", "PEACE"
+    "MOUNTAIN", "FOREST", "DESERT", "ISLAND", "SKY", "UNIVERSE", "GALAXY"
 ]
 
 # ========== ТЕКСТЫ ==========
@@ -683,7 +680,34 @@ def top_kb(user_id):
     texts = TEXTS[lang]
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton(texts["top_crystals"], callback_data="top_crystals"),
+        types.InlineKeyboardButton(texts["buttons"]["back"], callback_data="back_to_main")
+    )
+    return markup
+
+def stats_kb(user_id):
+    lang = get_user_lang(user_id)
+    texts = TEXTS[lang]
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton(texts["buttons"]["back"], callback_data="back_to_main")
+    )
+    return markup
+
+def daily_kb(user_id):
+    lang = get_user_lang(user_id)
+    texts = TEXTS[lang]
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton(texts["buttons"]["back"], callback_data="back_to_main")
+    )
+    return markup
+
+def wheel_kb(user_id):
+    lang = get_user_lang(user_id)
+    texts = TEXTS[lang]
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton(texts["buttons"]["spin"], callback_data=f"wheel_spin_{user_id}"),
         types.InlineKeyboardButton(texts["buttons"]["back"], callback_data="back_to_main")
     )
     return markup
@@ -705,16 +729,6 @@ def game_kb(user_id):
         types.InlineKeyboardButton("🔍 Подсказка (50)", callback_data=f"use_hint_{user_id}"),
         types.InlineKeyboardButton("🔄 Сменить слово (100)", callback_data=f"use_reroll_{user_id}"),
         types.InlineKeyboardButton("🏠 Выйти", callback_data=f"exit_game_{user_id}")
-    )
-    return markup
-
-def wheel_kb(user_id):
-    lang = get_user_lang(user_id)
-    texts = TEXTS[lang]
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton(texts["buttons"]["spin"], callback_data=f"wheel_spin_{user_id}"),
-        types.InlineKeyboardButton(texts["buttons"]["back"], callback_data="back_to_main")
     )
     return markup
 
@@ -792,7 +806,7 @@ def stats_command(message):
 {texts["stats_best_streak"].format(best_streak=user['best_streak'])}
 {texts["stats_donated"].format(donated=user.get('donated_stars', 0))}"""
     
-    send_with_image(message.chat.id, "stats", text, main_menu_kb(user_id))
+    send_with_image(message.chat.id, "stats", text, stats_kb(user_id))
 
 @bot.message_handler(commands=['top'])
 def top_command(message):
@@ -858,7 +872,7 @@ def daily_command(message):
 {texts["daily_reward"].format(crystals=bonus)}
 {texts["daily_streak"].format(streak=streak)}"""
     
-    send_with_image(message.chat.id, "stats", text, main_menu_kb(user_id))
+    send_with_image(message.chat.id, "stats", text, daily_kb(user_id))
 
 @bot.message_handler(commands=['wheel'])
 def wheel_command(message):
@@ -1107,22 +1121,6 @@ def callback_handler(call):
         edit_with_image(call.message.chat.id, call.message.message_id, "top", text, top_kb(user_id))
         bot.answer_callback_query(call.id)
     
-    elif data == "top_crystals":
-        users = load_json(USERS_FILE)
-        top = []
-        for uid, u in users.items():
-            username = u.get('username', f"User_{uid}")
-            top.append({'username': username, 'crystals': u.get('crystals', 0)})
-        top.sort(key=lambda x: x['crystals'], reverse=True)
-        
-        text = f"{texts['top_crystals']}\n\n"
-        for i, u in enumerate(top[:10], 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            text += f"{medal} {u['username']} — {u['crystals']}💎\n"
-        
-        bot.send_message(chat_id, text, reply_markup=top_kb(user_id))
-        bot.answer_callback_query(call.id)
-    
     elif data == "stats":
         text = f"""{texts["stats_title"]}
 
@@ -1132,7 +1130,7 @@ def callback_handler(call):
 {texts["stats_streak"].format(streak=user['streak'])}
 {texts["stats_best_streak"].format(best_streak=user['best_streak'])}
 {texts["stats_donated"].format(donated=user.get('donated_stars', 0))}"""
-        edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, main_menu_kb(user_id))
+        edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, stats_kb(user_id))
         bot.answer_callback_query(call.id)
     
     elif data == "daily":
@@ -1149,7 +1147,7 @@ def callback_handler(call):
 {texts["daily_reward"].format(crystals=bonus)}
 {texts["daily_streak"].format(streak=streak)}"""
         
-        edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, main_menu_kb(user_id))
+        edit_with_image(call.message.chat.id, call.message.message_id, "stats", text, daily_kb(user_id))
         bot.answer_callback_query(call.id)
     
     elif data == "wheel":
