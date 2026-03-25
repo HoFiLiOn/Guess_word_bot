@@ -8,7 +8,7 @@ except ImportError:
 import random
 import json
 import os
-from collections import defaultdict, Counter
+import string
 from datetime import datetime, timedelta
 
 TOKEN = "7766594100:AAH7j4yGEW5Tqoiu8IguYh0Mn3g7lMbPwj8"
@@ -18,8 +18,7 @@ ADMIN_ID = 8388843828
 # ========== ФАЙЛЫ ==========
 USERS_FILE = "guess_users.json"
 DONATIONS_FILE = "donations.json"
-SETTINGS_FILE = "bot_settings.json"
-DAILY_FILE = "daily_bonus.json"
+LOBBIES_FILE = "lobbies.json"
 
 # ========== КАРТИНКИ ==========
 IMAGES = {
@@ -30,6 +29,92 @@ IMAGES = {
     "stats": "https://s10.iimage.su/s/24/gDyJ0rdxDzMm1NngFnHePE7MB5uz3oQphOMwXKCtu.jpg",
     "donate": "https://s10.iimage.su/s/24/gsqCZaQxs8sp4aoo0dGKbiNKWzrP6Dg5bEnSjvv9f.jpg"
 }
+
+# ========== ЛОББИ ==========
+active_lobbies = {}  # код лобби -> данные лобби
+user_lobby = {}  # user_id -> код лобби
+
+def generate_lobby_code():
+    """Генерирует случайный 6-значный код"""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def create_lobby(creator_id, lang="ru"):
+    """Создаёт новое лобби"""
+    code = generate_lobby_code()
+    active_lobbies[code] = {
+        "creator": creator_id,
+        "players": [creator_id],
+        "lang": lang,
+        "status": "waiting",  # waiting, playing
+        "created_at": datetime.now().isoformat(),
+        "game": None
+    }
+    user_lobby[creator_id] = code
+    return code
+
+def join_lobby(user_id, code):
+    """Присоединяет пользователя к лобби"""
+    if code not in active_lobbies:
+        return False, "❌ Лобби не найдено"
+    
+    lobby = active_lobbies[code]
+    
+    if lobby["status"] != "waiting":
+        return False, "❌ Игра уже началась"
+    
+    if user_id in lobby["players"]:
+        return False, "❌ Вы уже в этом лобби"
+    
+    lobby["players"].append(user_id)
+    user_lobby[user_id] = code
+    return True, lobby
+
+def leave_lobby(user_id):
+    """Выход из лобби"""
+    if user_id not in user_lobby:
+        return False
+    
+    code = user_lobby[user_id]
+    if code in active_lobbies:
+        lobby = active_lobbies[code]
+        if user_id in lobby["players"]:
+            lobby["players"].remove(user_id)
+        
+        # Если лобби пустое, удаляем
+        if len(lobby["players"]) == 0:
+            del active_lobbies[code]
+        elif lobby["creator"] == user_id and len(lobby["players"]) > 0:
+            # Если создатель вышел, назначаем нового создателя
+            lobby["creator"] = lobby["players"][0]
+    
+    del user_lobby[user_id]
+    return True
+
+def start_lobby_game(code):
+    """Начинает игру в лобби"""
+    if code not in active_lobbies:
+        return False, "❌ Лобби не найдено"
+    
+    lobby = active_lobbies[code]
+    
+    if lobby["status"] != "waiting":
+        return False, "❌ Игра уже началась"
+    
+    if len(lobby["players"]) < 2:
+        return False, "❌ Нужно минимум 2 игрока"
+    
+    lobby["status"] = "playing"
+    lobby["game"] = {
+        "word": get_word(lobby["lang"]),
+        "guessed_letters": [],
+        "wrong_letters": [],
+        "attempts": 6,
+        "turn": 0,  # индекс текущего игрока
+        "scores": {player: 0 for player in lobby["players"]},
+        "current_letter": None
+    }
+    
+    return True, lobby
 
 # ========== ПОЛНЫЙ ПЕРЕВОД ==========
 TEXTS = {
@@ -91,7 +176,7 @@ TEXTS = {
         "lang_ru": "🇷🇺 Русский",
         "lang_en": "🇬🇧 English",
         "help_title": "❓ ПОМОЩЬ",
-        "help_text": "🎮 КАК ИГРАТЬ:\n\n1️⃣ Нажми «Начать игру»\n2️⃣ Введи букву или слово\n3️⃣ Угадай слово\n\n💡 СОВЕТЫ:\n• Буквы отображаются на своих местах\n• Используй подсказки в магазине\n• За победу дают кристаллы\n• Ежедневный бонус и колесо фортуны ждут тебя!\n\n📊 КОМАНДЫ:\n/start — главное меню\n/stats — статистика\n/top — таблица лидеров\n/shop — магазин\n/daily — ежедневный бонус\n/wheel — колесо фортуны\n/lang — язык\n/donate — поддержать\n/help — помощь",
+        "help_text": "🎮 КАК ИГРАТЬ:\n\n1️⃣ Нажми «Начать игру»\n2️⃣ Введи букву или слово\n3️⃣ Угадай слово\n\n💡 СОВЕТЫ:\n• Буквы отображаются на своих местах\n• Используй подсказки в магазине\n• За победу дают кристаллы\n• Ежедневный бонус и колесо фортуны ждут тебя!\n\n🎲 ЛОББИ:\n/create_lobby ru/en — создать лобби\n/join КОД — присоединиться к лобби\n/leave_lobby — выйти из лобби\n/lobby_info — информация о лобби\n/start_lobby — начать игру (только создатель)\n\n📊 КОМАНДЫ:\n/start — главное меню\n/stats — статистика\n/top — таблица лидеров\n/shop — магазин\n/daily — ежедневный бонус\n/wheel — колесо фортуны\n/lang — язык\n/donate — поддержать\n/help — помощь",
         "buttons": {
             "start": "🎮 Начать игру",
             "donate": "⭐ Поддержать",
@@ -101,6 +186,7 @@ TEXTS = {
             "lang": "🌐 Язык",
             "daily": "🎁 Ежедневный бонус",
             "wheel": "🎡 Колесо фортуны",
+            "lobby": "🎲 Лобби",
             "help": "❓ Помощь",
             "back": "◀️ Назад",
             "spin": "🌀 Крутить!"
@@ -164,7 +250,7 @@ TEXTS = {
         "lang_ru": "🇷🇺 Russian",
         "lang_en": "🇬🇧 English",
         "help_title": "❓ HELP",
-        "help_text": "🎮 HOW TO PLAY:\n\n1️⃣ Press «Start Game»\n2️⃣ Enter a letter or word\n3️⃣ Guess the word\n\n💡 TIPS:\n• Letters appear in their places\n• Use hints from the shop\n• Get crystals for wins\n• Daily bonus and wheel of fortune are waiting!\n\n📊 COMMANDS:\n/start — main menu\n/stats — statistics\n/top — leaderboard\n/shop — shop\n/daily — daily bonus\n/wheel — wheel of fortune\n/lang — language\n/donate — support\n/help — help",
+        "help_text": "🎮 HOW TO PLAY:\n\n1️⃣ Press «Start Game»\n2️⃣ Enter a letter or word\n3️⃣ Guess the word\n\n💡 TIPS:\n• Letters appear in their places\n• Use hints from the shop\n• Get crystals for wins\n• Daily bonus and wheel of fortune are waiting!\n\n🎲 LOBBY:\n/create_lobby ru/en — create lobby\n/join CODE — join lobby\n/leave_lobby — leave lobby\n/lobby_info — lobby info\n/start_lobby — start game (creator only)\n\n📊 COMMANDS:\n/start — main menu\n/stats — statistics\n/top — leaderboard\n/shop — shop\n/daily — daily bonus\n/wheel — wheel of fortune\n/lang — language\n/donate — support\n/help — help",
         "buttons": {
             "start": "🎮 Start Game",
             "donate": "⭐ Support",
@@ -174,6 +260,7 @@ TEXTS = {
             "lang": "🌐 Language",
             "daily": "🎁 Daily bonus",
             "wheel": "🎡 Wheel of Fortune",
+            "lobby": "🎲 Lobby",
             "help": "❓ Help",
             "back": "◀️ Back",
             "spin": "🌀 Spin!"
@@ -450,6 +537,7 @@ def lobby_kb(user_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton(texts["start"], callback_data="start_game"),
+        types.InlineKeyboardButton(texts["lobby"], callback_data="lobby_menu"),
         types.InlineKeyboardButton(texts["donate"], callback_data="donate"),
         types.InlineKeyboardButton(texts["shop"], callback_data="shop"),
         types.InlineKeyboardButton(texts["top"], callback_data="top"),
@@ -458,6 +546,17 @@ def lobby_kb(user_id):
         types.InlineKeyboardButton(texts["wheel"], callback_data="wheel"),
         types.InlineKeyboardButton(texts["lang"], callback_data="lang"),
         types.InlineKeyboardButton(texts["help"], callback_data="help")
+    )
+    return markup
+
+def lobby_menu_kb(user_id):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🎲 Создать лобби", callback_data="create_lobby"),
+        types.InlineKeyboardButton("🔍 Инфо о лобби", callback_data="lobby_info"),
+        types.InlineKeyboardButton("🚪 Выйти из лобби", callback_data="leave_lobby"),
+        types.InlineKeyboardButton("▶️ Старт игры", callback_data="start_lobby"),
+        types.InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")
     )
     return markup
 
@@ -524,8 +623,6 @@ def lang_kb(user_id):
     return markup
 
 def game_kb(user_id):
-    lang = get_user_lang(user_id)
-    texts = TEXTS[lang]
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
         types.InlineKeyboardButton("🔍 Подсказка (50)", callback_data=f"use_hint_{user_id}"),
@@ -599,6 +696,144 @@ def start_command(message):
 {texts["stats_games"].format(games=user['games'])}"""
     
     send_with_image(message.chat.id, "main", text, lobby_kb(user_id))
+
+@bot.message_handler(commands=['create_lobby'])
+def create_lobby_command(message):
+    user_id = message.from_user.id
+    args = message.text.split()
+    
+    lang = "ru"
+    if len(args) > 1 and args[1] in ["ru", "en"]:
+        lang = args[1]
+    
+    # Проверяем, не в лобби ли уже
+    if user_id in user_lobby:
+        bot.reply_to(message, "❌ Вы уже в лобби! Используйте /leave_lobby чтобы выйти")
+        return
+    
+    code = create_lobby(user_id, lang)
+    bot.reply_to(message, f"✅ Лобби создано!\n\n🎲 Код: {code}\n🌐 Язык: {'🇷🇺 Русский' if lang == 'ru' else '🇬🇧 English'}\n\n📢 Скажите друзьям: /join {code}\n👥 Игроков: 1\n\n▶️ Когда соберётесь, создатель может начать игру: /start_lobby")
+
+@bot.message_handler(commands=['join'])
+def join_lobby_command(message):
+    user_id = message.from_user.id
+    args = message.text.split()
+    
+    if len(args) < 2:
+        bot.reply_to(message, "❌ Используйте: /join КОД")
+        return
+    
+    code = args[1].upper()
+    
+    # Проверяем, не в лобби ли уже
+    if user_id in user_lobby:
+        bot.reply_to(message, "❌ Вы уже в лобби! Используйте /leave_lobby чтобы выйти")
+        return
+    
+    success, result = join_lobby(user_id, code)
+    
+    if success:
+        lobby = result
+        players = []
+        for pid in lobby["players"]:
+            user = get_user(pid)
+            players.append(f"👤 {user.get('username', f'Игрок {pid}')}")
+        
+        text = f"✅ Вы присоединились к лобби {code}!\n\n👥 Игроки:\n" + "\n".join(players)
+        bot.reply_to(message, text)
+        
+        # Уведомляем создателя
+        creator = lobby["creator"]
+        bot.send_message(creator, f"🎉 Новый игрок присоединился к лобби {code}!\n\n👥 Игроков: {len(lobby['players'])}\n\n▶️ /start_lobby - начать игру")
+    else:
+        bot.reply_to(message, result)
+
+@bot.message_handler(commands=['leave_lobby'])
+def leave_lobby_command(message):
+    user_id = message.from_user.id
+    
+    if user_id not in user_lobby:
+        bot.reply_to(message, "❌ Вы не в лобби")
+        return
+    
+    code = user_lobby[user_id]
+    leave_lobby(user_id)
+    bot.reply_to(message, "✅ Вы вышли из лобби")
+
+@bot.message_handler(commands=['lobby_info'])
+def lobby_info_command(message):
+    user_id = message.from_user.id
+    
+    if user_id not in user_lobby:
+        bot.reply_to(message, "❌ Вы не в лобби")
+        return
+    
+    code = user_lobby[user_id]
+    lobby = active_lobbies.get(code)
+    
+    if not lobby:
+        bot.reply_to(message, "❌ Лобби не найдено")
+        return
+    
+    players = []
+    for pid in lobby["players"]:
+        user = get_user(pid)
+        prefix = "👑 " if pid == lobby["creator"] else "👤 "
+        players.append(f"{prefix}{user.get('username', f'Игрок {pid}')}")
+    
+    text = f"""🎲 ИНФОРМАЦИЯ О ЛОББИ
+
+📋 Код: {code}
+🌐 Язык: {'🇷🇺 Русский' if lobby['lang'] == 'ru' else '🇬🇧 English'}
+👑 Создатель: {get_user(lobby['creator']).get('username', lobby['creator'])}
+📊 Статус: {'⏳ Ожидание' if lobby['status'] == 'waiting' else '🎮 Игра идёт'}
+
+👥 Игроки ({len(lobby['players'])}):
+{chr(10).join(players)}
+
+{'▶️ /start_lobby - начать игру' if lobby['creator'] == user_id and lobby['status'] == 'waiting' else ''}"""
+    
+    bot.reply_to(message, text)
+
+@bot.message_handler(commands=['start_lobby'])
+def start_lobby_command(message):
+    user_id = message.from_user.id
+    
+    if user_id not in user_lobby:
+        bot.reply_to(message, "❌ Вы не в лобби")
+        return
+    
+    code = user_lobby[user_id]
+    lobby = active_lobbies.get(code)
+    
+    if not lobby:
+        bot.reply_to(message, "❌ Лобби не найдено")
+        return
+    
+    if lobby["creator"] != user_id:
+        bot.reply_to(message, "❌ Только создатель может начать игру")
+        return
+    
+    if lobby["status"] != "waiting":
+        bot.reply_to(message, "❌ Игра уже началась")
+        return
+    
+    if len(lobby["players"]) < 2:
+        bot.reply_to(message, "❌ Нужно минимум 2 игрока")
+        return
+    
+    success, result = start_lobby_game(code)
+    
+    if success:
+        lobby = result
+        # Уведомляем всех игроков
+        for pid in lobby["players"]:
+            bot.send_message(pid, f"🎮 Игра в лобби {code} началась!\n\n👥 Игроки: {len(lobby['players'])}\n\nХод первого игрока!")
+        
+        # Здесь нужно запустить игровой цикл для лобби
+        bot.reply_to(message, "✅ Игра началась!")
+    else:
+        bot.reply_to(message, result)
 
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
@@ -747,7 +982,7 @@ def handle_all_messages(message):
 {texts["stats_crystals"].format(crystals=user['crystals'])}
 {texts["stats_wins"].format(wins=user['wins'])}
 
-Нет активной игры. Нажми «Начать игру»"""
+Нет активной игры. Нажми «Начать игру» или создай лобби: /create_lobby"""
             send_with_image(message.chat.id, "main", text, lobby_kb(user_id))
 
 # ========== ОБРАБОТКА КНОПОК ==========
@@ -791,6 +1026,117 @@ def callback_handler(call):
 {texts["stats_wins"].format(wins=user['wins'])}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "main", text, lobby_kb(user_id))
         bot.answer_callback_query(call.id)
+    
+    elif data == "lobby_menu":
+        text = "🎲 ЛОББИ\n\nВыберите действие:"
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=lobby_menu_kb(user_id))
+        bot.answer_callback_query(call.id)
+    
+    elif data == "create_lobby":
+        lang = user.get('lang', 'ru')
+        if user_id in user_lobby:
+            bot.answer_callback_query(call.id, "❌ Вы уже в лобби! Используйте /leave_lobby", show_alert=True)
+            return
+        
+        code = create_lobby(user_id, lang)
+        bot.answer_callback_query(call.id, f"✅ Лобби создано! Код: {code}")
+        
+        text = f"""✅ Лобби создано!
+
+🎲 Код: {code}
+🌐 Язык: {'🇷🇺 Русский' if lang == 'ru' else '🇬🇧 English'}
+👥 Игроков: 1
+
+📢 Скажите друзьям: /join {code}
+
+▶️ Когда соберётесь, нажмите «Старт игры»"""
+        
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=lobby_menu_kb(user_id))
+    
+    elif data == "lobby_info":
+        if user_id not in user_lobby:
+            bot.answer_callback_query(call.id, "❌ Вы не в лобби", show_alert=True)
+            return
+        
+        code = user_lobby[user_id]
+        lobby = active_lobbies.get(code)
+        
+        if not lobby:
+            bot.answer_callback_query(call.id, "❌ Лобби не найдено", show_alert=True)
+            return
+        
+        players = []
+        for pid in lobby["players"]:
+            u = get_user(pid)
+            prefix = "👑 " if pid == lobby["creator"] else "👤 "
+            players.append(f"{prefix}{u.get('username', f'Игрок {pid}')}")
+        
+        text = f"""🎲 ИНФОРМАЦИЯ О ЛОББИ
+
+📋 Код: {code}
+🌐 Язык: {'🇷🇺 Русский' if lobby['lang'] == 'ru' else '🇬🇧 English'}
+👑 Создатель: {get_user(lobby['creator']).get('username', lobby['creator'])}
+📊 Статус: {'⏳ Ожидание' if lobby['status'] == 'waiting' else '🎮 Игра идёт'}
+
+👥 Игроки ({len(lobby['players'])}):
+{chr(10).join(players)}"""
+        
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=lobby_menu_kb(user_id))
+        bot.answer_callback_query(call.id)
+    
+    elif data == "leave_lobby":
+        if user_id not in user_lobby:
+            bot.answer_callback_query(call.id, "❌ Вы не в лобби", show_alert=True)
+            return
+        
+        leave_lobby(user_id)
+        bot.answer_callback_query(call.id, "✅ Вы вышли из лобби")
+        
+        text = f"""{texts["game_title"]}
+
+{texts["stats_crystals"].format(crystals=user['crystals'])}
+{texts["stats_wins"].format(wins=user['wins'])}"""
+        edit_with_image(call.message.chat.id, call.message.message_id, "main", text, lobby_kb(user_id))
+    
+    elif data == "start_lobby":
+        if user_id not in user_lobby:
+            bot.answer_callback_query(call.id, "❌ Вы не в лобби", show_alert=True)
+            return
+        
+        code = user_lobby[user_id]
+        lobby = active_lobbies.get(code)
+        
+        if not lobby:
+            bot.answer_callback_query(call.id, "❌ Лобби не найдено", show_alert=True)
+            return
+        
+        if lobby["creator"] != user_id:
+            bot.answer_callback_query(call.id, "❌ Только создатель может начать игру", show_alert=True)
+            return
+        
+        if lobby["status"] != "waiting":
+            bot.answer_callback_query(call.id, "❌ Игра уже началась", show_alert=True)
+            return
+        
+        if len(lobby["players"]) < 2:
+            bot.answer_callback_query(call.id, "❌ Нужно минимум 2 игрока", show_alert=True)
+            return
+        
+        success, result = start_lobby_game(code)
+        
+        if success:
+            lobby = result
+            for pid in lobby["players"]:
+                bot.send_message(pid, f"🎮 Игра в лобби {code} началась!\n\n👥 Игроков: {len(lobby['players'])}\n\nХод первого игрока!")
+            
+            bot.answer_callback_query(call.id, "✅ Игра началась!")
+            text = f"""{texts["game_title"]}
+
+{texts["stats_crystals"].format(crystals=user['crystals'])}
+{texts["stats_wins"].format(wins=user['wins'])}"""
+            edit_with_image(call.message.chat.id, call.message.message_id, "main", text, lobby_kb(user_id))
+        else:
+            bot.answer_callback_query(call.id, result, show_alert=True)
     
     elif data == "donate":
         text = f"""{texts["donate_title"]}
@@ -991,6 +1337,12 @@ def callback_handler(call):
         if user_id in active_games and active_games[user_id].active:
             bot.answer_callback_query(call.id, "❌ У вас уже есть игра!", show_alert=True)
             return
+        
+        # Проверяем, не в лобби ли пользователь
+        if user_id in user_lobby:
+            bot.answer_callback_query(call.id, "❌ Вы в лобби! Используйте /leave_lobby чтобы играть одному", show_alert=True)
+            return
+        
         sent = bot.send_message(call.message.chat.id, "🎮 Генерация слова...")
         game = Game(call.message.chat.id, user_id, lang, sent.message_id)
         active_games[user_id] = game
@@ -1138,6 +1490,11 @@ def welcome_new_member(message):
 2️⃣ → Угадывайте слово по буквам
 3️⃣ → Получайте кристаллы и попадайте в топ!
 
+🎲 ЛОББИ (игра с друзьями):
+/create_lobby ru/en — создать лобби
+/join КОД — присоединиться к лобби
+/start_lobby — начать игру (только создатель)
+
 ⭐ Поддержать проект:
 💰 /donate → поддержать бота Telegram Stars
 
@@ -1150,7 +1507,6 @@ def welcome_new_member(message):
 🎁 /daily → ежедневный бонус
 🎡 /wheel → колесо фортуны
 ❓ /help → помощь
-👥 /lobby → кто сейчас играет
 
 🎯 Играйте вместе, соревнуйтесь и побеждайте!
 
@@ -1163,6 +1519,7 @@ def welcome_new_member(message):
 if __name__ == "__main__":
     print("🤖 Бот запущен")
     print("🎮 УГАДАЙ СЛОВО")
+    print("🎲 ЛОББИ: /create_lobby, /join, /start_lobby")
     print("🎁 Ежедневный бонус и колесо фортуны")
     print("🔧 Админ-панель: /admin")
     try:
