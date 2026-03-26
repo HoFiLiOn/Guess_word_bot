@@ -9,7 +9,8 @@ import random
 import json
 import os
 import time
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 
 TOKEN = "7766594100:AAH7j4yGEW5Tqoiu8IguYh0Mn3g7lMbPwj8"
@@ -20,6 +21,8 @@ ADMIN_ID = 8388843828
 USERS_FILE = "guess_users.json"
 DONATIONS_FILE = "donations.json"
 PROMO_FILE = "promocodes.json"
+SETTINGS_FILE = "bot_settings.json"
+LOGS_FILE = "admin_logs.json"
 
 # ========== КАРТИНКИ ==========
 IMAGES = {
@@ -34,6 +37,14 @@ IMAGES = {
     "wheel": "https://s10.iimage.su/s/25/gbDCZmqxCKzgIVyU6vq9hC8upJb0GOOyy38EGQa6H.png",
     "promo": "https://s10.iimage.su/s/25/gFlt3kqxmkHEJJF5AyWC2bKzV9zUQZLTSE96FWt2g.jpg",
     "inventory": "https://s10.iimage.su/s/25/gwUW3mYxhzzGTEbYaA1wvVL7ma1MaSFzlUIsjoARf.jpg"
+}
+
+# ========== КАЗИНО ==========
+CASINO_GAMES = {
+    "coin": {"name": "Орёл/Решка", "multiplier": 2},
+    "dice": {"name": "Кости", "multiplier": 6},
+    "slot": {"name": "Слоты", "multiplier": 5},
+    "blackjack": {"name": "Блэкджек", "multiplier": 2}
 }
 
 # ========== СЛОЖНОСТЬ ==========
@@ -58,7 +69,9 @@ class MegaNeuralNetwork:
                 "СТОЛ", "СТУЛ", "ОКНО", "ДВЕРЬ", "РУЧКА", "МАШИНА", "УЛИЦА", "ПАРК", "ЛУНА",
                 "ЗЕМЛЯ", "ВОДА", "ОГОНЬ", "ВЕТЕР", "СНЕГ", "ДОЖДЬ", "ЛЕТО", "ЗИМА", "ВЕСНА",
                 "ОСЕНЬ", "УТРО", "ВЕЧЕР", "СВЕТ", "ТЕНЬ", "ГОЛОС", "СЛОВО", "БУКВА", "СТРАНА",
-                "ПЛАНЕТА", "ПРИРОДА", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА"
+                "ПЛАНЕТА", "ПРИРОДА", "ЧЕЛОВЕК", "СЧАСТЬЕ", "ЛЮБОВЬ", "ДРУЖБА", "ШКОЛА",
+                "УЧИТЕЛЬ", "РАБОТА", "ДЕНЬГИ", "ВРЕМЯ", "МЫСЛЬ", "ИДЕЯ", "МЕЧТА", "НАДЕЖДА",
+                "КОНЬ", "МЕЛЬ", "СТАЛЬ", "РУЛЬ", "БОЛЬ", "ПЫЛЬ", "ЦЕЛЬ", "СОЛЬ", "МОЛЬ", "ТОЛЬ"
             ]
         else:
             self.vowels = "AEIOUY"
@@ -69,11 +82,14 @@ class MegaNeuralNetwork:
                 "CAT", "DOG", "SUN", "MOON", "STAR", "TREE", "FLOWER", "BIRD", "FISH",
                 "HOUSE", "CAR", "MOM", "DAD", "SON", "DAUGHTER", "BROTHER", "SISTER",
                 "FRIEND", "LOVE", "HOPE", "WATER", "FIRE", "EARTH", "WIND", "CLOUD",
-                "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT"
+                "RAIN", "SNOW", "SUMMER", "WINTER", "SPRING", "AUTUMN", "DAY", "NIGHT",
+                "CITY", "TOWN", "STREET", "PARK", "RIVER", "LAKE", "SEA", "OCEAN",
+                "MOUNTAIN", "FOREST", "DESERT", "ISLAND", "SKY", "UNIVERSE", "GALAXY"
             ]
         
         self.letter_freq = self._calc_freq()
         self.bigrams = self._calc_bigrams()
+        self.trigrams = self._calc_trigrams()
     
     def _calc_freq(self):
         freq = defaultdict(int)
@@ -91,6 +107,14 @@ class MegaNeuralNetwork:
         total = sum(bigrams.values())
         return {k: v/total for k, v in bigrams.items()}
     
+    def _calc_trigrams(self):
+        trigrams = defaultdict(int)
+        for word in self.corpus:
+            for i in range(len(word)-2):
+                trigrams[word[i:i+3]] += 1
+        total = sum(trigrams.values())
+        return {k: v/total for k, v in trigrams.items()}
+    
     def _is_readable(self, word):
         if len(word) < 3:
             return False
@@ -104,15 +128,29 @@ class MegaNeuralNetwork:
                     return False
             else:
                 cons_seq = 0
+        for i in range(len(word) - 2):
+            if word[i] == word[i+1] == word[i+2]:
+                return False
+        if self.lang == "ru":
+            for i in range(len(word) - 1):
+                if word[i+1] == self.soft_sign and word[i] not in self.consonants:
+                    return False
         return True
     
     def generate_word(self, min_len=3, max_len=8):
-        for _ in range(50):
+        for _ in range(100):
             length = random.randint(min_len, max_len)
             word = [random.choice(list(self.letter_freq.keys()))]
             for i in range(1, length):
                 if len(word) >= 2:
-                    bigram = ''.join(word[-2:])
+                    trigram = ''.join(word[-2:])
+                    candidates = [t for t in self.trigrams if t.startswith(trigram)]
+                    if candidates:
+                        next_char = random.choice(candidates)[-1]
+                        word.append(next_char)
+                        continue
+                if len(word) >= 1:
+                    bigram = word[-1]
                     candidates = [b for b in self.bigrams if b.startswith(bigram)]
                     if candidates:
                         next_char = random.choice(candidates)[-1]
@@ -146,6 +184,18 @@ def save_json(file, data):
     except:
         pass
 
+def log_admin_action(admin_id, action, details):
+    logs = load_json(LOGS_FILE)
+    if 'logs' not in logs:
+        logs['logs'] = []
+    logs['logs'].append({
+        'admin_id': admin_id,
+        'action': action,
+        'details': details,
+        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+    save_json(LOGS_FILE, logs)
+
 def get_user(user_id):
     users = load_json(USERS_FILE)
     uid = str(user_id)
@@ -161,7 +211,8 @@ def get_user(user_id):
             'donated_stars': 0,
             'last_daily': None,
             'daily_streak': 0,
-            'inventory': {'hint': 0, 'reroll': 0, 'shield': 0, 'double': 0}
+            'inventory': {'hint': 0, 'reroll': 0, 'shield': 0, 'double': 0},
+            'blocked': False
         }
         save_json(USERS_FILE, users)
     return users[uid]
@@ -261,12 +312,10 @@ def play_casino(user_id, game_type, bet, choice=None):
     
     elif game_type == "slot":
         symbols = ["🍒", "🍋", "🔔", "💎", "7️⃣"]
-        slot1 = random.choice(symbols)
-        slot2 = random.choice(symbols)
-        slot3 = random.choice(symbols)
-        result = f"{slot1} {slot2} {slot3}"
-        if slot1 == slot2 == slot3:
-            mult = 10 if slot1 == "7️⃣" else 5
+        s1, s2, s3 = random.choice(symbols), random.choice(symbols), random.choice(symbols)
+        result = f"{s1} {s2} {s3}"
+        if s1 == s2 == s3:
+            mult = 10 if s1 == "7️⃣" else 5
             win = bet * mult
             user['crystals'] += win
             update_user(user_id, user)
@@ -292,6 +341,19 @@ def play_casino(user_id, game_type, bet, choice=None):
         else:
             update_user(user_id, user)
             return 0, f"😢 ПОРАЖЕНИЕ! 😢\n\n🃏 Вы: {player}, Дилер: {dealer}\n💰 Ставка: {bet}💎\n💸 Проигрыш: {bet}💎\n\n💰 Баланс: {user['crystals']}💎"
+
+def send_gift(from_id, to_id, amount):
+    from_user = get_user(from_id)
+    if from_user['crystals'] < amount:
+        return False, f"❌ Не хватает кристаллов! Нужно {amount}💎"
+    if amount < 10 or amount > 1000:
+        return False, "❌ Сумма от 10 до 1000💎"
+    from_user['crystals'] -= amount
+    to_user = get_user(to_id)
+    to_user['crystals'] += amount
+    update_user(from_id, from_user)
+    update_user(to_id, to_user)
+    return True, f"✅ Подарок отправлен!\n\n👤 Получатель: {to_user.get('username', to_id)}\n🎁 Сумма: {amount}💎"
 
 def get_word(lang, difficulty):
     diff = DIFFICULTY[difficulty]
@@ -498,6 +560,10 @@ TEXTS = {
         "lang_title": "🌐 ВЫБЕРИ ЯЗЫК",
         "lang_ru": "🇷🇺 Русский",
         "lang_en": "🇬🇧 English",
+        "promo_title": "🎫 ПРОМОКОДЫ",
+        "promo_enter": "Введите промокод командой:\n/promo КОД\n\nПример: /promo WELCOME100",
+        "gift_title": "🎁 ПОДАРКИ",
+        "gift_usage": "Используйте команду:\n/gift @username сумма\n\nПример: /gift @friend 100\n\nСумма от 10 до 1000💎",
         "help_title": "❓ ПОМОЩЬ",
         "help_text": """<b>📚 ПОМОЩЬ</b>
 
@@ -601,6 +667,10 @@ TEXTS = {
         "lang_title": "🌐 CHOOSE LANGUAGE",
         "lang_ru": "🇷🇺 Russian",
         "lang_en": "🇬🇧 English",
+        "promo_title": "🎫 PROMO CODES",
+        "promo_enter": "Enter promo code:\n/promo CODE\n\nExample: /promo WELCOME100",
+        "gift_title": "🎁 GIFTS",
+        "gift_usage": "Use command:\n/gift @username amount\n\nExample: /gift @friend 100\n\nAmount from 10 to 1000💎",
         "help_title": "❓ HELP",
         "help_text": """<b>📚 HELP</b>
 
@@ -904,9 +974,30 @@ def game_kb(user_id):
     )
     return markup
 
+# ========== АДМИН-ПАНЕЛЬ ==========
+def admin_panel_kb():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("👥 Пользователи", callback_data="admin_users"),
+        types.InlineKeyboardButton("🎫 Промокоды", callback_data="admin_promocodes"),
+        types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
+        types.InlineKeyboardButton("🎮 Управление игрой", callback_data="admin_game"),
+        types.InlineKeyboardButton("📝 Тексты", callback_data="admin_texts"),
+        types.InlineKeyboardButton("🖼️ Картинки", callback_data="admin_images"),
+        types.InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast"),
+        types.InlineKeyboardButton("📋 Логи", callback_data="admin_logs"),
+        types.InlineKeyboardButton("🎁 Подарки", callback_data="admin_gifts"),
+        types.InlineKeyboardButton("🔔 Уведомления", callback_data="admin_notifications"),
+        types.InlineKeyboardButton("🧠 Нейросеть", callback_data="admin_neural"),
+        types.InlineKeyboardButton("🔄 Сброс статистики", callback_data="admin_reset"),
+        types.InlineKeyboardButton("◀️ Назад", callback_data="back_to_main")
+    )
+    return markup
+
 # ========== КОМАНДЫ ==========
 active_games = {}
 casino_sessions = {}
+reset_confirm = {}
 
 @bot.message_handler(commands=['start', 'guess', 'menu'])
 def start_command(message):
@@ -1072,24 +1163,12 @@ def gift_command(message):
         if not target_id:
             bot.reply_to(message, "❌ Пользователь не найден")
             return
-        from_user = get_user(user_id)
-        if from_user['crystals'] < amount:
-            bot.reply_to(message, f"❌ Не хватает кристаллов! Нужно {amount}💎")
-            return
-        if amount < 10 or amount > 1000:
-            bot.reply_to(message, "❌ Сумма от 10 до 1000💎")
-            return
-        from_user['crystals'] -= amount
-        to_user = get_user(target_id)
-        to_user['crystals'] += amount
-        update_user(user_id, from_user)
-        update_user(target_id, to_user)
-        bot.reply_to(message, f"✅ Подарок отправлен!\n\n👤 Получатель: {username}\n🎁 Сумма: {amount}💎")
-        bot.send_message(target_id, f"🎁 ВАМ ПОДАРОК!\n\n👤 От: {from_user.get('username', user_id)}\n🎁 Сумма: {amount}💎\n💰 Новый баланс: {to_user['crystals']}💎")
+        success, msg = send_gift(user_id, target_id, amount)
+        bot.reply_to(message, msg)
     else:
         lang = get_user_lang(user_id)
         texts = TEXTS[lang]
-        bot.reply_to(message, f"{texts['buttons']['gift']}\n\nИспользуйте: /gift @username сумма")
+        send_with_image(message.chat.id, "inventory", f"<b>{texts['gift_title']}</b>\n\n{texts['gift_usage']}", gift_kb(user_id))
 
 @bot.message_handler(commands=['promo'])
 def promo_command(message):
@@ -1138,6 +1217,13 @@ def help_command(message):
     lang = get_user_lang(user_id)
     texts = TEXTS[lang]
     bot.send_message(message.chat.id, texts["help_text"], parse_mode="HTML")
+
+@bot.message_handler(commands=['admin'])
+def admin_command(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.reply_to(message, "❌ Нет прав")
+        return
+    bot.send_message(message.chat.id, "🔧 АДМИН ПАНЕЛЬ", reply_markup=admin_panel_kb())
 
 # ========== ОБРАБОТКА СООБЩЕНИЙ ==========
 @bot.message_handler(func=lambda message: True)
@@ -1283,7 +1369,6 @@ def callback_handler(call):
             result = texts["wheel_no_money"].format(price=price)
         else:
             result = texts["wheel_win"].format(prize=f"{prize} кристаллов" if isinstance(prize, int) else prize)
-        # Редактируем то же сообщение
         wheel_text = f"""<b>{texts["wheel_title"]}</b>
 
 {result}"""
@@ -1353,8 +1438,6 @@ def callback_handler(call):
         except:
             bot.answer_callback_query(call.id, "❌ Неверный выбор", show_alert=True)
             return
-        
-        # Показываем результат и возвращаем в меню казино
         text = f"""<b>{casino.get_bet_text().split('💰')[0]}</b>
 
 {result}"""
@@ -1368,7 +1451,6 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ Сессия не найдена", show_alert=True)
             return
         casino = casino_sessions[user_id]
-        # Визуальное вращение
         symbols = ["🍒", "🍋", "🔔", "💎", "7️⃣"]
         for _ in range(5):
             s1, s2, s3 = random.choice(symbols), random.choice(symbols), random.choice(symbols)
@@ -1522,24 +1604,16 @@ def callback_handler(call):
         edit_with_image(call.message.chat.id, call.message.message_id, "main", text, main_menu_kb(user_id))
     
     elif data == "promo":
-        text = f"""<b>🎫 ПРОМОКОДЫ</b>
+        text = f"""<b>{texts['promo_title']}</b>
 
-Введите промокод командой:
-/promo КОД
-
-Пример: /promo WELCOME100"""
+{texts['promo_enter']}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "promo", text, promo_kb(user_id))
         bot.answer_callback_query(call.id)
     
     elif data == "gift":
-        text = f"""<b>🎁 ПОДАРКИ</b>
+        text = f"""<b>{texts['gift_title']}</b>
 
-Используйте команду:
-/gift @username сумма
-
-Пример: /gift @friend 100
-
-Сумма от 10 до 1000💎"""
+{texts['gift_usage']}"""
         edit_with_image(call.message.chat.id, call.message.message_id, "inventory", text, gift_kb(user_id))
         bot.answer_callback_query(call.id)
     
@@ -1590,6 +1664,22 @@ def callback_handler(call):
     elif data == "help":
         text = texts["help_text"]
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.answer_callback_query(call.id)
+    
+    # Админ-панель (упрощённая для демонстрации)
+    elif data == "admin_stats":
+        if user_id != ADMIN_ID:
+            bot.answer_callback_query(call.id, "❌ Доступ запрещен")
+            return
+        users = load_json(USERS_FILE)
+        donations = load_json(DONATIONS_FILE)
+        total_users = len(users)
+        total_games = sum(u.get('games', 0) for u in users.values())
+        total_wins = sum(u.get('wins', 0) for u in users.values())
+        total_crystals = sum(u.get('crystals', 0) for u in users.values())
+        total_stars = donations.get('stats', {}).get('total_stars', 0)
+        text = f"📊 СТАТИСТИКА\n\n👥 Игроков: {total_users}\n🎮 Игр: {total_games}\n🏆 Побед: {total_wins}\n💰 Кристаллов: {total_crystals}\n⭐ Stars: {total_stars}"
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=admin_panel_kb())
         bot.answer_callback_query(call.id)
 
 # ========== ПЛАТЕЖИ ==========
@@ -1674,8 +1764,9 @@ if __name__ == "__main__":
     print("🎁 ПОДАРКИ — дари кристаллы друзьям")
     print("📦 ИНВЕНТАРЬ — используй предметы")
     print("🎫 ПРОМОКОДЫ — активируй бонусы")
+    print("🔧 АДМИН-ПАНЕЛЬ — 12 разделов")
     print("")
-    print("Команды: /start, /stats, /top, /shop, /inventory, /daily, /wheel, /casino, /gift, /promo, /lang, /donate, /help")
+    print("Команды: /start, /stats, /top, /shop, /inventory, /daily, /wheel, /casino, /gift, /promo, /lang, /donate, /help, /admin")
     try:
         bot.infinity_polling(timeout=60)
     except Exception as e:
