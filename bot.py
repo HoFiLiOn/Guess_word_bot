@@ -27,7 +27,6 @@ MARKET_FILE = f"{DATA_DIR}/market.json"
 REPORTS_FILE = f"{DATA_DIR}/reports.json"
 IDEAS_FILE = f"{DATA_DIR}/ideas.json"
 SETTINGS_FILE = f"{DATA_DIR}/settings.json"
-WORKSHOP_FILE = f"{DATA_DIR}/workshop.json"  # не используется, храним в users
 
 # ========== НАСТРОЙКИ ПО УМОЛЧАНИЮ ==========
 DEFAULT_SETTINGS = {
@@ -38,18 +37,10 @@ DEFAULT_SETTINGS = {
         {'max_price': 999999, 'commission': 10}
     ],
     'market_min_prices': {
-        'Vip': 8000,
-        'Pro': 10000,
-        'Phoenix': 15000,
-        'Dragon': 25000,
-        'Elite': 30000,
-        'Phantom': 35000,
-        'Hydra': 45000,
-        'Overlord': 55000,
-        'Apex': 70000,
-        'Quantum': 80000
+        'Vip': 8000, 'Pro': 10000, 'Phoenix': 15000, 'Dragon': 25000,
+        'Elite': 30000, 'Phantom': 35000, 'Hydra': 45000, 'Overlord': 55000,
+        'Apex': 70000, 'Quantum': 80000
     },
-    'market_bot_buyout': True,
     'market_lot_days': 7,
     'workshop_levels': {
         1: {'price': 0, 'bonus': 0, 'max_lots': 1},
@@ -65,7 +56,7 @@ DEFAULT_SETTINGS = {
     }
 }
 
-# ========== ФОТОГРАФИИ (прямые ссылки) ==========
+# ========== ФОТОГРАФИИ ==========
 IMAGES = {
     'main': 'https://s10.iimage.su/s/19/gRFZSeMxdaqNHNZYeqDEWNQDnnz80Ja8c63deATA7.jpg',
     'shop': 'https://s10.iimage.su/s/19/gRnaU7sxEU6XWHYbGw78EkVSp5IPw1ddodaUu9mlo.jpg',
@@ -77,7 +68,7 @@ IMAGES = {
     'help': 'https://s10.iimage.su/s/19/gX0g4pSxDRr1P8bhaHjT0KOjsGod9MpHXH0us0gRZ.jpg'
 }
 
-# ========== ОСНОВНЫЕ ФУНКЦИИ ==========
+# ========== ФУНКЦИИ РАБОТЫ С ДАННЫМИ ==========
 def get_moscow_time():
     return datetime.utcnow() + timedelta(hours=3)
 
@@ -105,9 +96,6 @@ def get_settings():
         save_json(SETTINGS_FILE, settings)
     return settings
 
-def save_settings(settings):
-    save_json(SETTINGS_FILE, settings)
-
 def is_admin(user_id):
     if user_id in MASTER_IDS:
         return True
@@ -117,6 +105,7 @@ def is_admin(user_id):
 def is_master(user_id):
     return user_id in MASTER_IDS
 
+# ========== РАБОТА С ПОЛЬЗОВАТЕЛЯМИ ==========
 def get_user(user_id):
     users = load_json(USERS_FILE)
     return users.get(str(user_id))
@@ -126,22 +115,11 @@ def create_user(user_id, username, first_name):
     uid = str(user_id)
     if uid not in users:
         users[uid] = {
-            'coins': 100,
-            'role': None,
-            'username': username,
-            'first_name': first_name,
-            'messages': 0,
-            'messages_today': 0,
-            'last_message_reset': None,
-            'daily_streak': 0,
-            'last_daily': None,
-            'invites': [],
-            'invited_by': None,
-            'referral_earned': 0,
-            'total_earned': 100,
-            'total_spent': 0,
-            'is_banned': False,
-            'ban_reason': None,
+            'coins': 100, 'role': None, 'username': username, 'first_name': first_name,
+            'messages': 0, 'messages_today': 0, 'last_message_reset': None,
+            'daily_streak': 0, 'last_daily': None, 'invites': [], 'invited_by': None,
+            'referral_earned': 0, 'total_earned': 100, 'total_spent': 0,
+            'is_banned': False, 'ban_reason': None,
             'registered_at': get_moscow_time().strftime('%Y-%m-%d %H:%M:%S'),
             'last_active': get_moscow_time().strftime('%Y-%m-%d %H:%M:%S'),
             'workshop_level': 1
@@ -169,87 +147,20 @@ def remove_coins(user_id, amount):
         return True
     return False
 
-def load_roles():
-    roles = load_json(ROLES_FILE)
-    if not roles:
-        roles = {
-            'Vip': {'price': 12000, 'mult': 1.1},
-            'Pro': {'price': 15000, 'mult': 1.2},
-            'Phoenix': {'price': 25000, 'mult': 1.3},
-            'Dragon': {'price': 40000, 'mult': 1.4},
-            'Elite': {'price': 45000, 'mult': 1.5},
-            'Phantom': {'price': 50000, 'mult': 1.6},
-            'Hydra': {'price': 60000, 'mult': 1.7},
-            'Overlord': {'price': 75000, 'mult': 1.8},
-            'Apex': {'price': 90000, 'mult': 1.9},
-            'Quantum': {'price': 100000, 'mult': 2.0}
-        }
-        save_json(ROLES_FILE, roles)
-    return roles
-
-def save_roles(roles):
-    save_json(ROLES_FILE, roles)
-
-def get_multiplier(user_id):
-    user = get_user(user_id)
-    if not user:
-        return 1.0
-    role = user.get('role')
-    roles = load_roles()
-    workshop_level = user.get('workshop_level', 1)
-    workshop_bonus = get_workshop_bonus(workshop_level)
-    role_mult = roles[role]['mult'] if role and role in roles else 1.0
-    return role_mult * (1 + workshop_bonus / 100)
-
-def get_workshop_bonus(level):
-    settings = get_settings()
-    levels = settings.get('workshop_levels', DEFAULT_SETTINGS['workshop_levels'])
-    return levels.get(level, {}).get('bonus', 0)
-
-def get_workshop_max_lots(level):
-    settings = get_settings()
-    levels = settings.get('workshop_levels', DEFAULT_SETTINGS['workshop_levels'])
-    return levels.get(level, {}).get('max_lots', 1)
-
-def get_workshop_next_price(level):
-    settings = get_settings()
-    levels = settings.get('workshop_levels', DEFAULT_SETTINGS['workshop_levels'])
-    next_level = level + 1
-    return levels.get(next_level, {}).get('price', None)
-
-def upgrade_workshop(user_id):
-    user = get_user(user_id)
-    if not user:
-        return False, "Ошибка"
-    current_level = user.get('workshop_level', 1)
-    next_price = get_workshop_next_price(current_level)
-    if next_price is None:
-        return False, "Максимальный уровень достигнут"
-    if user['coins'] < next_price:
-        return False, f"Не хватает монет. Нужно {next_price}💰"
-    remove_coins(user_id, next_price)
-    users = load_json(USERS_FILE)
-    users[str(user_id)]['workshop_level'] = current_level + 1
-    save_json(USERS_FILE, users)
-    return True, f"Мастерская улучшена до {current_level + 1} уровня! +{get_workshop_bonus(current_level + 1)}% к доходу"
-
 def is_banned(user_id):
     user = get_user(user_id)
     return user.get('is_banned', False) if user else False
 
 def add_message(user_id):
-    if is_banned(user_id):
-        return False
+    if is_banned(user_id): return False
     user = get_user(user_id)
-    if not user:
-        return False
+    if not user: return False
     now = get_moscow_time()
     today = now.strftime('%Y-%m-%d')
     if user.get('last_message_reset') != today:
         user['messages_today'] = 0
         user['last_message_reset'] = today
-    if user['messages_today'] >= 500:
-        return False
+    if user['messages_today'] >= 500: return False
     base = random.randint(1, 5)
     mult = get_multiplier(user_id)
     earn = int(base * mult)
@@ -273,11 +184,9 @@ def add_message(user_id):
 
 def get_daily(user_id):
     user = get_user(user_id)
-    if not user:
-        return 0, "Ошибка"
+    if not user: return 0, "Ошибка"
     today = get_moscow_time().strftime('%Y-%m-%d')
-    if user.get('last_daily') == today:
-        return 0, "❌ Бонус уже получен сегодня!"
+    if user.get('last_daily') == today: return 0, "❌ Бонус уже получен сегодня!"
     streak = user.get('daily_streak', 0) + 1
     if streak >= 15:
         bonus = random.randint(400, 800)
@@ -301,42 +210,8 @@ def get_daily(user_id):
     users[uid]['total_earned'] += bonus
     save_json(USERS_FILE, users)
     msg = f"🎁 +{bonus}💰\n🔥 Серия: {streak} дн."
-    if extra:
-        msg += f"\n{extra}"
+    if extra: msg += f"\n{extra}"
     return bonus, msg
-
-def buy_role(user_id, role_name):
-    user = get_user(user_id)
-    if not user:
-        return False, "Ошибка"
-    roles = load_roles()
-    if role_name not in roles:
-        return False, "Роль не найдена"
-    price = roles[role_name]['price']
-    if user['coins'] < price:
-        return False, f"Нужно {price}💰\n💰 У тебя: {user['coins']}💰"
-    old_role = user.get('role')
-    cashback = 0
-    if old_role and old_role in roles and roles[old_role]['price'] > 0:
-        cashback = int(roles[old_role]['price'] * 0.1)
-    remove_coins(user_id, price)
-    if cashback > 0:
-        add_coins(user_id, cashback)
-    users = load_json(USERS_FILE)
-    users[str(user_id)]['role'] = role_name
-    save_json(USERS_FILE, users)
-    inviter = user.get('invited_by')
-    if inviter:
-        bonus = int(price * 0.1)
-        add_coins(int(inviter), bonus)
-        try:
-            bot.send_message(int(inviter), f"🎉 <b>Бонус!</b>\n\n👤 {user['first_name']} купил {role_name}\n💰 +{bonus} монет", parse_mode='HTML')
-        except:
-            pass
-    msg = f"✅ <b>Поздравляю!</b>\n\n🎭 Роль: {role_name}\n💰 Цена: {price}💰\n📈 Множитель: x{roles[role_name]['mult']}"
-    if cashback > 0:
-        msg += f"\n💸 Кешбэк: {cashback}💰"
-    return True, msg
 
 def add_invite(inviter, invited):
     users = load_json(USERS_FILE)
@@ -356,11 +231,9 @@ def add_invite(inviter, invited):
 
 def check_referral_reward(invited_id):
     invited = get_user(invited_id)
-    if not invited:
-        return
+    if not invited: return
     inviter = invited.get('invited_by')
-    if not inviter:
-        return
+    if not inviter: return
     if invited['messages'] >= 50:
         users = load_json(USERS_FILE)
         inv_str = str(inviter)
@@ -374,6 +247,95 @@ def check_referral_reward(invited_id):
                 bot.send_message(int(inviter), f"🎉 <b>Бонус за активность!</b>\n\n👤 {invited['first_name']} написал 50 сообщений\n💰 +200 монет", parse_mode='HTML')
             except:
                 pass
+
+# ========== РАБОТА С РОЛЯМИ ==========
+def load_roles():
+    roles = load_json(ROLES_FILE)
+    if not roles:
+        roles = {
+            'Vip': {'price': 12000, 'mult': 1.1},
+            'Pro': {'price': 15000, 'mult': 1.2},
+            'Phoenix': {'price': 25000, 'mult': 1.3},
+            'Dragon': {'price': 40000, 'mult': 1.4},
+            'Elite': {'price': 45000, 'mult': 1.5},
+            'Phantom': {'price': 50000, 'mult': 1.6},
+            'Hydra': {'price': 60000, 'mult': 1.7},
+            'Overlord': {'price': 75000, 'mult': 1.8},
+            'Apex': {'price': 90000, 'mult': 1.9},
+            'Quantum': {'price': 100000, 'mult': 2.0}
+        }
+        save_json(ROLES_FILE, roles)
+    return roles
+
+def save_roles(roles):
+    save_json(ROLES_FILE, roles)
+
+def get_multiplier(user_id):
+    user = get_user(user_id)
+    if not user: return 1.0
+    roles = load_roles()
+    role = user.get('role')
+    workshop_level = user.get('workshop_level', 1)
+    workshop_bonus = get_workshop_bonus(workshop_level)
+    role_mult = roles[role]['mult'] if role and role in roles else 1.0
+    return role_mult * (1 + workshop_bonus / 100)
+
+def get_workshop_bonus(level):
+    settings = get_settings()
+    levels = settings.get('workshop_levels', DEFAULT_SETTINGS['workshop_levels'])
+    return levels.get(level, {}).get('bonus', 0)
+
+def get_workshop_max_lots(level):
+    settings = get_settings()
+    levels = settings.get('workshop_levels', DEFAULT_SETTINGS['workshop_levels'])
+    return levels.get(level, {}).get('max_lots', 1)
+
+def get_workshop_next_price(level):
+    settings = get_settings()
+    levels = settings.get('workshop_levels', DEFAULT_SETTINGS['workshop_levels'])
+    next_level = level + 1
+    return levels.get(next_level, {}).get('price', None)
+
+def upgrade_workshop(user_id):
+    user = get_user(user_id)
+    if not user: return False, "Ошибка"
+    current = user.get('workshop_level', 1)
+    next_price = get_workshop_next_price(current)
+    if not next_price: return False, "Максимальный уровень достигнут"
+    if user['coins'] < next_price: return False, f"Не хватает монет. Нужно {next_price}💰"
+    remove_coins(user_id, next_price)
+    users = load_json(USERS_FILE)
+    users[str(user_id)]['workshop_level'] = current + 1
+    save_json(USERS_FILE, users)
+    return True, f"Мастерская улучшена до {current + 1} уровня! +{get_workshop_bonus(current + 1)}% к доходу"
+
+def buy_role(user_id, role_name):
+    user = get_user(user_id)
+    if not user: return False, "Ошибка"
+    roles = load_roles()
+    if role_name not in roles: return False, "Роль не найдена"
+    price = roles[role_name]['price']
+    if user['coins'] < price: return False, f"Нужно {price}💰\n💰 У тебя: {user['coins']}💰"
+    old_role = user.get('role')
+    cashback = 0
+    if old_role and old_role in roles and roles[old_role]['price'] > 0:
+        cashback = int(roles[old_role]['price'] * 0.1)
+    remove_coins(user_id, price)
+    if cashback > 0: add_coins(user_id, cashback)
+    users = load_json(USERS_FILE)
+    users[str(user_id)]['role'] = role_name
+    save_json(USERS_FILE, users)
+    inviter = user.get('invited_by')
+    if inviter:
+        bonus = int(price * 0.1)
+        add_coins(int(inviter), bonus)
+        try:
+            bot.send_message(int(inviter), f"🎉 <b>Бонус!</b>\n\n👤 {user['first_name']} купил {role_name}\n💰 +{bonus} монет", parse_mode='HTML')
+        except:
+            pass
+    msg = f"✅ <b>Поздравляю!</b>\n\n🎭 Роль: {role_name}\n💰 Цена: {price}💰\n📈 Множитель: x{roles[role_name]['mult']}"
+    if cashback > 0: msg += f"\n💸 Кешбэк: {cashback}💰"
+    return True, msg
 
 # ========== РЫНОК ==========
 def load_market():
@@ -390,8 +352,7 @@ def get_market_commission(price):
     settings = get_settings()
     tiers = settings.get('market_commission_tiers', DEFAULT_SETTINGS['market_commission_tiers'])
     for tier in tiers:
-        if price <= tier['max_price']:
-            return tier['commission']
+        if price <= tier['max_price']: return tier['commission']
     return settings.get('market_commission_base', 10)
 
 def get_market_min_price(role_name):
@@ -401,34 +362,25 @@ def get_market_min_price(role_name):
 
 def add_market_lot(user_id, role_name, price):
     user = get_user(user_id)
-    if not user:
-        return False, "Ошибка"
-    if user.get('role') != role_name:
-        return False, "Вы можете продавать только свою текущую роль"
+    if not user: return False, "Ошибка"
+    if user.get('role') != role_name: return False, "Вы можете продавать только свою текущую роль"
     workshop_level = user.get('workshop_level', 1)
     max_lots = get_workshop_max_lots(workshop_level)
     market = load_market()
     user_lots = [lot for lot in market['lots'] if lot['seller_id'] == user_id]
-    if len(user_lots) >= max_lots:
-        return False, f"Вы можете выставить только {max_lots} лот(ов). Улучшите Мастерскую"
+    if len(user_lots) >= max_lots: return False, f"Вы можете выставить только {max_lots} лот(ов). Улучшите Мастерскую"
     min_price = get_market_min_price(role_name)
-    if price < min_price:
-        return False, f"Минимальная цена для этой роли: {min_price}💰"
+    if price < min_price: return False, f"Минимальная цена для этой роли: {min_price}💰"
     settings = get_settings()
     lot = {
-        'id': market['next_id'],
-        'seller_id': user_id,
-        'seller_name': user['first_name'],
-        'seller_username': user.get('username'),
-        'role_name': role_name,
-        'price': price,
+        'id': market['next_id'], 'seller_id': user_id, 'seller_name': user['first_name'],
+        'seller_username': user.get('username'), 'role_name': role_name, 'price': price,
         'created_at': get_moscow_time().isoformat(),
         'expires_at': (get_moscow_time() + timedelta(days=settings.get('market_lot_days', 7))).isoformat()
     }
     market['lots'].append(lot)
     market['next_id'] += 1
     save_market(market)
-    # Снимаем роль у продавца
     users = load_json(USERS_FILE)
     users[str(user_id)]['role'] = None
     save_json(USERS_FILE, users)
@@ -448,21 +400,13 @@ def remove_market_lot(lot_id, user_id):
 
 def buy_market_lot(lot_id, buyer_id):
     market = load_market()
-    lot = None
-    for l in market['lots']:
-        if l['id'] == lot_id:
-            lot = l
-            break
-    if not lot:
-        return False, "Лот не найден"
-    if lot['seller_id'] == buyer_id:
-        return False, "Нельзя купить свой лот"
+    lot = next((l for l in market['lots'] if l['id'] == lot_id), None)
+    if not lot: return False, "Лот не найден"
+    if lot['seller_id'] == buyer_id: return False, "Нельзя купить свой лот"
     buyer = get_user(buyer_id)
-    if not buyer:
-        return False, "Ошибка"
+    if not buyer: return False, "Ошибка"
     price = lot['price']
-    if buyer['coins'] < price:
-        return False, f"Не хватает монет. Нужно {price}💰"
+    if buyer['coins'] < price: return False, f"Не хватает монет. Нужно {price}💰"
     if datetime.fromisoformat(lot['expires_at']) < get_moscow_time():
         users = load_json(USERS_FILE)
         users[str(lot['seller_id'])]['role'] = lot['role_name']
@@ -470,9 +414,9 @@ def buy_market_lot(lot_id, buyer_id):
         market['lots'].remove(lot)
         save_market(market)
         return False, "Лот истёк"
-    commission_percent = get_market_commission(price)
-    commission = int(price * commission_percent / 100)
-    seller_gets = price - commission
+    commission = get_market_commission(price)
+    commission_amount = int(price * commission / 100)
+    seller_gets = price - commission_amount
     remove_coins(buyer_id, price)
     add_coins(lot['seller_id'], seller_gets)
     users = load_json(USERS_FILE)
@@ -481,7 +425,7 @@ def buy_market_lot(lot_id, buyer_id):
     market['lots'].remove(lot)
     save_market(market)
     try:
-        bot.send_message(lot['seller_id'], f"💰 <b>Ваш лот продан!</b>\n\n🎭 Роль: {lot['role_name']}\n💰 Цена: {price}💰\n💸 Комиссия: {commission}💰\n💵 Вы получили: {seller_gets}💰", parse_mode='HTML')
+        bot.send_message(lot['seller_id'], f"💰 <b>Ваш лот продан!</b>\n\n🎭 Роль: {lot['role_name']}\n💰 Цена: {price}💰\n💸 Комиссия: {commission_amount}💰\n💵 Вы получили: {seller_gets}💰", parse_mode='HTML')
     except:
         pass
     return True, f"✅ Вы купили роль {lot['role_name']} за {price}💰"
@@ -505,66 +449,47 @@ def cleanup_expired_lots():
             save_json(USERS_FILE, users)
             market['lots'].remove(lot)
             removed += 1
-    if removed:
-        save_market(market)
+    if removed: save_market(market)
     return removed
 
 # ========== ОТЧЁТЫ И ИДЕИ ==========
-def save_report(user_id, username, first_name, message_text, file_id=None, file_type=None):
+def save_report(user_id, username, first_name, text, file_id=None):
     reports = load_json(REPORTS_FILE)
-    if 'list' not in reports:
-        reports['list'] = []
+    if 'list' not in reports: reports['list'] = []
     report_id = len(reports['list']) + 1
     reports['list'].append({
-        'id': report_id,
-        'user_id': user_id,
-        'username': username,
-        'first_name': first_name,
-        'text': message_text,
-        'file_id': file_id,
-        'file_type': file_type,
-        'status': 'new',
-        'created_at': get_moscow_time().isoformat()
+        'id': report_id, 'user_id': user_id, 'username': username, 'first_name': first_name,
+        'text': text, 'file_id': file_id, 'status': 'new', 'created_at': get_moscow_time().isoformat()
     })
     save_json(REPORTS_FILE, reports)
-    owner_id = MASTER_IDS[0]
     mention = f"@{username}" if username else first_name
     try:
-        bot.send_message(owner_id, f"📝 <b>Новый отчёт</b>\n\nОт: {mention} (ID: {user_id})\n\n{message_text}", parse_mode='HTML')
+        bot.send_message(MASTER_IDS[0], f"📝 <b>Новый отчёт</b>\n\nОт: {mention} (ID: {user_id})\n\n{text}", parse_mode='HTML')
     except:
         pass
     return report_id
 
-def save_idea(user_id, username, first_name, idea_text):
+def save_idea(user_id, username, first_name, text):
     ideas = load_json(IDEAS_FILE)
-    if 'list' not in ideas:
-        ideas['list'] = []
+    if 'list' not in ideas: ideas['list'] = []
     idea_id = len(ideas['list']) + 1
     ideas['list'].append({
-        'id': idea_id,
-        'user_id': user_id,
-        'username': username,
-        'first_name': first_name,
-        'text': idea_text,
-        'status': 'new',
-        'created_at': get_moscow_time().isoformat()
+        'id': idea_id, 'user_id': user_id, 'username': username, 'first_name': first_name,
+        'text': text, 'status': 'new', 'created_at': get_moscow_time().isoformat()
     })
     save_json(IDEAS_FILE, ideas)
-    owner_id = MASTER_IDS[0]
     mention = f"@{username}" if username else first_name
     try:
-        bot.send_message(owner_id, f"💡 <b>Новая идея</b>\n\nОт: {mention} (ID: {user_id})\n\n{idea_text}", parse_mode='HTML')
+        bot.send_message(MASTER_IDS[0], f"💡 <b>Новая идея</b>\n\nОт: {mention} (ID: {user_id})\n\n{text}", parse_mode='HTML')
     except:
         pass
     return idea_id
 
 def get_reports_list():
-    reports = load_json(REPORTS_FILE)
-    return reports.get('list', [])
+    return load_json(REPORTS_FILE).get('list', [])
 
 def get_ideas_list():
-    ideas = load_json(IDEAS_FILE)
-    return ideas.get('list', [])
+    return load_json(IDEAS_FILE).get('list', [])
 
 def update_report_status(report_id, status):
     reports = load_json(REPORTS_FILE)
@@ -605,16 +530,9 @@ def get_stats():
     with_role = sum(1 for u in users.values() if u.get('role'))
     today = get_moscow_time().strftime('%Y-%m-%d')
     active = sum(1 for u in users.values() if u.get('last_active', '').startswith(today))
-    return {
-        'total': total,
-        'coins': coins,
-        'messages': msgs,
-        'banned': banned,
-        'with_role': with_role,
-        'active': active
-    }
+    return {'total': total, 'coins': coins, 'messages': msgs, 'banned': banned, 'with_role': with_role, 'active': active}
 
-# ========== КЛАВИАТУРЫ (ТОЛЬКО INLINE, БЕЗ EDIT_MESSAGE_MEDIA) ==========
+# ========== КЛАВИАТУРЫ ==========
 def get_main_menu(user_id):
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = [
@@ -642,20 +560,15 @@ def get_shop_menu(page=1):
     items = list(roles.items())
     per_page = 3
     total = (len(items) + per_page - 1) // per_page
-    if page < 1: page = 1
-    if page > total: page = total
+    page = max(1, min(page, total))
     start = (page-1)*per_page
-    end = start+per_page
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for name, data in items[start:end]:
+    for name, data in items[start:start+per_page]:
         markup.add(types.InlineKeyboardButton(f"{name} — {data['price']}💰 (x{data['mult']})", callback_data=f"buy_{name}"))
     nav = []
-    if page > 1:
-        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"shop_page_{page-1}"))
-    if page < total:
-        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"shop_page_{page+1}"))
-    if nav:
-        markup.row(*nav)
+    if page > 1: nav.append(types.InlineKeyboardButton("◀️", callback_data=f"shop_page_{page-1}"))
+    if page < total: nav.append(types.InlineKeyboardButton("▶️", callback_data=f"shop_page_{page+1}"))
+    if nav: markup.row(*nav)
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="back"))
     return markup, page, total
 
@@ -663,21 +576,16 @@ def get_market_menu(page=1):
     lots = get_all_lots()
     per_page = 3
     total = (len(lots) + per_page - 1) // per_page if lots else 1
-    if page < 1: page = 1
-    if page > total: page = total
+    page = max(1, min(page, total))
     start = (page-1)*per_page
-    end = start+per_page
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for lot in lots[start:end]:
+    for lot in lots[start:start+per_page]:
         seller = f"@{lot['seller_username']}" if lot['seller_username'] else lot['seller_name']
         markup.add(types.InlineKeyboardButton(f"#{lot['id']} {lot['role_name']} — {lot['price']}💰 ({seller})", callback_data=f"lot_{lot['id']}"))
     nav = []
-    if page > 1:
-        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"market_page_{page-1}"))
-    if page < total:
-        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"market_page_{page+1}"))
-    if nav:
-        markup.row(*nav)
+    if page > 1: nav.append(types.InlineKeyboardButton("◀️", callback_data=f"market_page_{page-1}"))
+    if page < total: nav.append(types.InlineKeyboardButton("▶️", callback_data=f"market_page_{page+1}"))
+    if nav: markup.row(*nav)
     markup.add(types.InlineKeyboardButton("💰 Выставить роль", callback_data="market_sell"))
     markup.add(types.InlineKeyboardButton("📦 Мои лоты", callback_data="market_my_lots"))
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="back"))
@@ -729,21 +637,16 @@ def get_users_list_menu(page=1):
     items = list(users.items())
     per_page = 10
     total = (len(items) + per_page - 1) // per_page if items else 1
-    if page < 1: page = 1
-    if page > total: page = total
+    page = max(1, min(page, total))
     start = (page-1)*per_page
-    end = start+per_page
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for uid, data in items[start:end]:
+    for uid, data in items[start:start+per_page]:
         name = data.get('first_name', 'User')
         markup.add(types.InlineKeyboardButton(f"{name} — {data['coins']}💰", callback_data=f"user_{uid}"))
     nav = []
-    if page > 1:
-        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"users_page_{page-1}"))
-    if page < total:
-        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"users_page_{page+1}"))
-    if nav:
-        markup.row(*nav)
+    if page > 1: nav.append(types.InlineKeyboardButton("◀️", callback_data=f"users_page_{page-1}"))
+    if page < total: nav.append(types.InlineKeyboardButton("▶️", callback_data=f"users_page_{page+1}"))
+    if nav: markup.row(*nav)
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_panel"))
     return markup, page, total
 
@@ -765,22 +668,17 @@ def get_reports_list_menu(page=1):
     reports.reverse()
     per_page = 5
     total = (len(reports) + per_page - 1) // per_page if reports else 1
-    if page < 1: page = 1
-    if page > total: page = total
+    page = max(1, min(page, total))
     start = (page-1)*per_page
-    end = start+per_page
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for r in reports[start:end]:
+    for r in reports[start:start+per_page]:
         status = "🔴" if r['status'] == 'new' else "🟢"
         name = r.get('first_name', f"User_{r['user_id']}")
         markup.add(types.InlineKeyboardButton(f"{status} #{r['id']} — {name}", callback_data=f"report_{r['id']}"))
     nav = []
-    if page > 1:
-        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"reports_page_{page-1}"))
-    if page < total:
-        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"reports_page_{page+1}"))
-    if nav:
-        markup.row(*nav)
+    if page > 1: nav.append(types.InlineKeyboardButton("◀️", callback_data=f"reports_page_{page-1}"))
+    if page < total: nav.append(types.InlineKeyboardButton("▶️", callback_data=f"reports_page_{page+1}"))
+    if nav: markup.row(*nav)
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_panel"))
     return markup, page, total
 
@@ -789,22 +687,17 @@ def get_ideas_list_menu(page=1):
     ideas.reverse()
     per_page = 5
     total = (len(ideas) + per_page - 1) // per_page if ideas else 1
-    if page < 1: page = 1
-    if page > total: page = total
+    page = max(1, min(page, total))
     start = (page-1)*per_page
-    end = start+per_page
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for i in ideas[start:end]:
+    for i in ideas[start:start+per_page]:
         status = "🔴" if i['status'] == 'new' else "🟢"
         name = i.get('first_name', f"User_{i['user_id']}")
         markup.add(types.InlineKeyboardButton(f"{status} #{i['id']} — {name}", callback_data=f"idea_{i['id']}"))
     nav = []
-    if page > 1:
-        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"ideas_page_{page-1}"))
-    if page < total:
-        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"ideas_page_{page+1}"))
-    if nav:
-        markup.row(*nav)
+    if page > 1: nav.append(types.InlineKeyboardButton("◀️", callback_data=f"ideas_page_{page-1}"))
+    if page < total: nav.append(types.InlineKeyboardButton("▶️", callback_data=f"ideas_page_{page+1}"))
+    if nav: markup.row(*nav)
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_panel"))
     return markup, page, total
 
@@ -812,21 +705,16 @@ def get_market_admin_menu(page=1):
     lots = get_all_lots()
     per_page = 5
     total = (len(lots) + per_page - 1) // per_page if lots else 1
-    if page < 1: page = 1
-    if page > total: page = total
+    page = max(1, min(page, total))
     start = (page-1)*per_page
-    end = start+per_page
     markup = types.InlineKeyboardMarkup(row_width=1)
-    for lot in lots[start:end]:
+    for lot in lots[start:start+per_page]:
         seller = f"@{lot['seller_username']}" if lot['seller_username'] else lot['seller_name']
         markup.add(types.InlineKeyboardButton(f"#{lot['id']} {lot['role_name']} — {lot['price']}💰 ({seller})", callback_data=f"admin_lot_{lot['id']}"))
     nav = []
-    if page > 1:
-        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"admin_lots_page_{page-1}"))
-    if page < total:
-        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"admin_lots_page_{page+1}"))
-    if nav:
-        markup.row(*nav)
+    if page > 1: nav.append(types.InlineKeyboardButton("◀️", callback_data=f"admin_lots_page_{page-1}"))
+    if page < total: nav.append(types.InlineKeyboardButton("▶️", callback_data=f"admin_lots_page_{page+1}"))
+    if nav: markup.row(*nav)
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="admin_panel"))
     return markup, page, total
 
@@ -837,7 +725,7 @@ def get_feedback_menu():
     markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="back"))
     return markup
 
-# ========== КОМАНДЫ ==========
+# ========== ОБРАБОТЧИКИ КОМАНД ==========
 @bot.message_handler(commands=['startrole', 'menu'])
 def menu_command(message):
     if message.chat.type != 'private':
@@ -886,7 +774,10 @@ def menu_command(message):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-    bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+    try:
+        bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+    except:
+        bot.send_message(user_id, text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
 
 @bot.message_handler(commands=['daily'])
 def daily_command(message):
@@ -897,7 +788,10 @@ def daily_command(message):
         bot.send_message(user_id, "🚫 Вы забанены", parse_mode='HTML')
         return
     bonus, msg = get_daily(user_id)
-    bot.send_photo(user_id, IMAGES['bonus'], caption=msg, parse_mode='HTML')
+    try:
+        bot.send_photo(user_id, IMAGES['bonus'], caption=msg, parse_mode='HTML')
+    except:
+        bot.send_message(user_id, msg, parse_mode='HTML')
 
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
@@ -908,7 +802,7 @@ def admin_command(message):
     text = f"🔧 <b>Админ панель</b>\n\n👑 <b>{message.from_user.first_name}</b>\n📊 Статус: {'Владелец' if is_master(user_id) else 'Администратор'}\n\n👇 <b>Выбери действие:</b>"
     bot.send_message(user_id, text, parse_mode='HTML', reply_markup=get_admin_panel())
 
-# ========== ОБРАБОТЧИК КНОПОК (ВЕСЬ CALLBACK) ==========
+# ========== ОБРАБОТЧИК КОЛБЭКОВ ==========
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     user_id = call.from_user.id
@@ -916,11 +810,9 @@ def callback_handler(call):
     if is_banned(user_id):
         bot.answer_callback_query(call.id, "Вы забанены", show_alert=True)
         return
-    user = get_user(user_id)
-    if not user:
-        user = create_user(user_id, call.from_user.username, call.from_user.first_name)
+    user = create_user(user_id, call.from_user.username, call.from_user.first_name)
 
-    # ГЛАВНОЕ МЕНЮ И НАЗАД
+    # Назад в главное меню
     if data == "back":
         role = user.get('role') or "Нет роли"
         mult = get_multiplier(user_id)
@@ -937,22 +829,31 @@ def callback_handler(call):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['main'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=get_main_menu(user_id))
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
         bot.answer_callback_query(call.id)
         return
 
-    # МАГАЗИН
+    # Магазин
     if data == "shop":
         markup, page, total = get_shop_menu(1)
         text = f"🛍️ <b>Магазин ролей</b>\n\n💰 Баланс: {user['coins']}💰\n📄 Страница {page}/{total}\n\n👇 <b>Выбери роль:</b>"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['shop'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         bot.answer_callback_query(call.id)
         return
     if data.startswith("shop_page_"):
         page = int(data.split("_")[-1])
         markup, page, total = get_shop_menu(page)
         text = f"🛍️ <b>Магазин ролей</b>\n\n💰 Баланс: {user['coins']}💰\n📄 Страница {page}/{total}\n\n👇 <b>Выбери роль:</b>"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['shop'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         bot.answer_callback_query(call.id)
         return
     if data.startswith("buy_"):
@@ -960,7 +861,6 @@ def callback_handler(call):
         success, msg = buy_role(user_id, role)
         bot.answer_callback_query(call.id, msg, show_alert=True)
         if success:
-            # Обновить главное меню
             role = user.get('role') or "Нет роли"
             mult = get_multiplier(user_id)
             workshop_level = user.get('workshop_level', 1)
@@ -976,10 +876,13 @@ def callback_handler(call):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+            try:
+                bot.edit_message_media(types.InputMediaPhoto(IMAGES['main'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=get_main_menu(user_id))
+            except:
+                bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
         return
 
-    # ПРОФИЛЬ
+    # Профиль
     if data == "profile":
         role = user.get('role') or "Нет роли"
         mult = get_multiplier(user_id)
@@ -1002,11 +905,14 @@ def callback_handler(call):
 ├ 💸 Потрачено: {user.get('total_spent', 0)}💰
 ├ 📦 Лотов на рынке: {len(get_user_lots(user_id))}/{max_lots}
 └ 📅 Регистрация: {user.get('registered_at', '-')[:10]}"""
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_back_button())
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['profile'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=get_back_button())
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_back_button())
         bot.answer_callback_query(call.id)
         return
 
-    # БОНУС
+    # Бонус
     if data == "bonus":
         bonus, msg = get_daily(user_id)
         bot.answer_callback_query(call.id, msg, show_alert=True)
@@ -1026,10 +932,13 @@ def callback_handler(call):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+            try:
+                bot.edit_message_media(types.InputMediaPhoto(IMAGES['main'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=get_main_menu(user_id))
+            except:
+                bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
         return
 
-    # ТОП
+    # Топ
     if data == "top":
         users = load_json(USERS_FILE)
         top = []
@@ -1040,30 +949,32 @@ def callback_handler(call):
         top = top[:10]
         text = "🏆 <b>Топ по монетам</b>\n\n"
         for i, (name, coins) in enumerate(top, 1):
-            if i == 1:
-                text += f"🥇 <b>{name}</b> — {coins}💰\n"
-            elif i == 2:
-                text += f"🥈 <b>{name}</b> — {coins}💰\n"
-            elif i == 3:
-                text += f"🥉 <b>{name}</b> — {coins}💰\n"
-            else:
-                text += f"{i}. {name} — {coins}💰\n"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_back_button())
+            if i == 1: text += f"🥇 <b>{name}</b> — {coins}💰\n"
+            elif i == 2: text += f"🥈 <b>{name}</b> — {coins}💰\n"
+            elif i == 3: text += f"🥉 <b>{name}</b> — {coins}💰\n"
+            else: text += f"{i}. {name} — {coins}💰\n"
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['leaders'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=get_back_button())
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_back_button())
         bot.answer_callback_query(call.id)
         return
 
-    # ПОМОЩЬ
+    # Помощь
     if data == "help":
         roles = load_roles()
         text = "📚 <b>Помощь</b>\n\n<b>💰 Как заработать?</b>\n• Писать в чат — 1-5💰 × множитель\n• /daily — ежедневный бонус\n• Приглашать друзей — 100💰\n• Покупать роли — увеличивать множитель\n• Улучшать мастерскую — увеличивать бонус\n• Продавать роли на рынке\n\n<b>🎭 Все роли:</b>\n"
         for name, data in roles.items():
             text += f"• {name}: {data['price']}💰 → x{data['mult']}\n"
         text += "\n<b>🔧 Мастерская</b>\nУлучшай мастерскую за монеты. Каждый уровень даёт +% к доходу и больше слотов на рынке.\n\n<b>💰 Рынок</b>\nПродавай свои роли другим игрокам. Комиссия зависит от цены.\n\n<b>📋 Команды:</b>\n• /startrole — запуск бота\n• /menu — главное меню\n• /daily — бонус"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_back_button())
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['help'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=get_back_button())
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_back_button())
         bot.answer_callback_query(call.id)
         return
 
-    # МАСТЕРСКАЯ
+    # Мастерская
     if data == "workshop":
         markup, level, bonus, max_lots, next_price = get_workshop_menu(user_id)
         text = f"🔧 <b>Мастерская</b>\n\n📊 Уровень: <b>{level}</b>\n📈 Бонус к доходу: +{bonus}%\n📦 Слотов на рынке: {max_lots}\n\n"
@@ -1071,7 +982,10 @@ def callback_handler(call):
             text += f"💰 Стоимость улучшения до {level+1} уровня: {next_price}💰\n\n🎁 <b>Что даст улучшение:</b>\n• +{get_workshop_bonus(level+1)}% к доходу\n• {get_workshop_max_lots(level+1)} слотов на рынке"
         else:
             text += "✨ <b>Максимальный уровень достигнут!</b>"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['workshop'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         bot.answer_callback_query(call.id)
         return
     if data == "workshop_upgrade":
@@ -1084,22 +998,31 @@ def callback_handler(call):
                 text += f"💰 Стоимость улучшения до {level+1} уровня: {next_price}💰\n\n🎁 <b>Что даст улучшение:</b>\n• +{get_workshop_bonus(level+1)}% к доходу\n• {get_workshop_max_lots(level+1)} слотов на рынке"
             else:
                 text += "✨ <b>Максимальный уровень достигнут!</b>"
-            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+            try:
+                bot.edit_message_media(types.InputMediaPhoto(IMAGES['workshop'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=markup)
+            except:
+                bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         return
 
-    # РЫНОК
+    # Рынок
     if data == "market":
         cleanup_expired_lots()
         markup, page, total = get_market_menu(1)
         text = f"💰 <b>Рынок ролей</b>\n\n📄 Страница {page}/{total}\n\n👇 <b>Выбери лот:</b>"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['market'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         bot.answer_callback_query(call.id)
         return
     if data.startswith("market_page_"):
         page = int(data.split("_")[-1])
         markup, page, total = get_market_menu(page)
         text = f"💰 <b>Рынок ролей</b>\n\n📄 Страница {page}/{total}\n\n👇 <b>Выбери лот:</b>"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['market'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         bot.answer_callback_query(call.id)
         return
     if data.startswith("lot_"):
@@ -1108,7 +1031,7 @@ def callback_handler(call):
         lot = next((l for l in market['lots'] if l['id'] == lot_id), None)
         if lot:
             commission = get_market_commission(lot['price'])
-            seller_gets = lot['price'] - int(lot['price'] * commission / 100)
+            commission_amount = int(lot['price'] * commission / 100)
             text = f"""🔨 <b>Лот #{lot['id']}</b>
 
 🎭 Роль: {lot['role_name']}
@@ -1116,8 +1039,8 @@ def callback_handler(call):
 👤 Продавец: @{lot['seller_username'] if lot['seller_username'] else lot['seller_name']}
 📅 Создан: {lot['created_at'][:16].replace('T', ' ')}
 
-💸 Комиссия: {commission}% ({int(lot['price'] * commission / 100)}💰)
-💰 Продавец получит: {seller_gets}💰"""
+💸 Комиссия: {commission}% ({commission_amount}💰)
+💰 Продавец получит: {lot['price'] - commission_amount}💰"""
             markup = types.InlineKeyboardMarkup(row_width=2)
             markup.add(types.InlineKeyboardButton("✅ Купить", callback_data=f"buy_lot_{lot_id}"))
             markup.add(types.InlineKeyboardButton("◀️ Назад", callback_data="market"))
@@ -1144,7 +1067,10 @@ def callback_handler(call):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+            try:
+                bot.edit_message_media(types.InputMediaPhoto(IMAGES['main'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=get_main_menu(user_id))
+            except:
+                bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_main_menu(user_id))
         return
     if data == "market_sell":
         user_role = user.get('role')
@@ -1174,14 +1100,16 @@ def callback_handler(call):
         lot_id = int(data.split("_")[-1])
         success, msg = remove_market_lot(lot_id, user_id)
         bot.answer_callback_query(call.id, msg, show_alert=True)
-        # Обновить список рынка
         cleanup_expired_lots()
         markup, page, total = get_market_menu(1)
         text = f"💰 <b>Рынок ролей</b>\n\n📄 Страница {page}/{total}\n\n👇 <b>Выбери лот:</b>"
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        try:
+            bot.edit_message_media(types.InputMediaPhoto(IMAGES['market'], caption=text, parse_mode='HTML'), call.message.chat.id, call.message.message_id, reply_markup=markup)
+        except:
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         return
 
-    # ОБРАТНАЯ СВЯЗЬ
+    # Обратная связь
     if data == "feedback":
         bot.edit_message_text("📝 <b>Обратная связь</b>\n\nВыберите тип сообщения:", call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=get_feedback_menu())
         bot.answer_callback_query(call.id)
@@ -1197,7 +1125,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         return
 
-    # АДМИН ПАНЕЛЬ
+    # Админ панель
     if data == "admin_panel":
         if not is_admin(user_id):
             bot.answer_callback_query(call.id, "Нет доступа", show_alert=True)
@@ -1207,7 +1135,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         return
 
-    # АДМИН: СТАТИСТИКА
+    # Админ: Статистика
     if data == "admin_stats":
         if not is_admin(user_id): return
         s = get_stats()
@@ -1217,7 +1145,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         return
 
-    # АДМИН: ПОЛЬЗОВАТЕЛИ
+    # Админ: Пользователи
     if data == "admin_users":
         if not is_admin(user_id): return
         markup, page, total = get_users_list_menu(1)
@@ -1242,52 +1170,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Действия над пользователем (выдать/забрать монеты, роль, бан)
-    if data.startswith("user_add_coins_"):
-        if not is_admin(user_id): return
-        target_id = int(data.split("_")[-1])
-        msg = bot.send_message(user_id, f"💰 <b>Выдать монеты</b>\n\nПользователь ID: {target_id}\n\nВведите сумму:", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_user_add_coins, target_id, call.message)
-        bot.answer_callback_query(call.id)
-        return
-    if data.startswith("user_remove_coins_"):
-        if not is_admin(user_id): return
-        target_id = int(data.split("_")[-1])
-        msg = bot.send_message(user_id, f"💸 <b>Забрать монеты</b>\n\nПользователь ID: {target_id}\n\nВведите сумму:", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_user_remove_coins, target_id, call.message)
-        bot.answer_callback_query(call.id)
-        return
-    if data.startswith("user_give_role_"):
-        if not is_admin(user_id): return
-        target_id = int(data.split("_")[-1])
-        roles_list = "\n".join(load_roles().keys())
-        msg = bot.send_message(user_id, f"🎭 <b>Выдать роль</b>\n\nПользователь ID: {target_id}\n\nДоступные роли:\n{roles_list}\n\nВведите название роли:", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_user_give_role, target_id, call.message)
-        bot.answer_callback_query(call.id)
-        return
-    if data.startswith("user_ban_"):
-        if not is_admin(user_id): return
-        target_id = int(data.split("_")[-1])
-        msg = bot.send_message(user_id, f"🚫 <b>Забанить</b>\n\nПользователь ID: {target_id}\n\nВведите причину бана:", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_user_ban, target_id, call.message)
-        bot.answer_callback_query(call.id)
-        return
-    if data.startswith("user_unban_"):
-        if not is_admin(user_id): return
-        target_id = int(data.split("_")[-1])
-        users = load_json(USERS_FILE)
-        if str(target_id) in users:
-            users[str(target_id)]['is_banned'] = False
-            users[str(target_id)]['ban_reason'] = None
-            save_json(USERS_FILE, users)
-            bot.answer_callback_query(call.id, f"Пользователь {target_id} разбанен", show_alert=True)
-            # Обновить меню пользователей
-            markup, page, total = get_users_list_menu(1)
-            text = f"👥 <b>Список пользователей</b>\n\n📄 Страница {page}/{total}\n\n👇 <b>Выбери пользователя:</b>"
-            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
-        return
-
-    # АДМИН: УПРАВЛЕНИЕ РЫНКОМ
+    # Админ: Управление рынком
     if data == "admin_market":
         if not is_admin(user_id): return
         cleanup_expired_lots()
@@ -1333,7 +1216,7 @@ def callback_handler(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         return
 
-    # АДМИН: МАСТЕРСКАЯ (настройки)
+    # Админ: Мастерская (настройки)
     if data == "admin_workshop":
         if not is_admin(user_id): return
         settings = get_settings()
@@ -1347,7 +1230,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         return
 
-    # АДМИН: ОТЧЁТЫ
+    # Админ: Отчёты
     if data == "admin_reports":
         if not is_admin(user_id): return
         markup, page, total = get_reports_list_menu(1)
@@ -1396,7 +1279,7 @@ def callback_handler(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         return
 
-    # АДМИН: ИДЕИ
+    # Админ: Идеи
     if data == "admin_ideas":
         if not is_admin(user_id): return
         markup, page, total = get_ideas_list_menu(1)
@@ -1445,43 +1328,43 @@ def callback_handler(call):
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
         return
 
-    # АДМИН: ОСТАЛЬНЫЕ ФУНКЦИИ (монеты, роли, бан, админы, рассылка, промо, бэкап, фото)
+    # Админ: Остальные команды
     if data == "admin_add_coins":
         if not is_admin(user_id): return
         msg = bot.send_message(user_id, "💰 <b>Выдать монеты</b>\n\nФормат: ID СУММА\n\nПример: 123456789 500", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_add_coins, call.message)
+        bot.register_next_step_handler(msg, process_add_coins)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_remove_coins":
         if not is_admin(user_id): return
         msg = bot.send_message(user_id, "💸 <b>Забрать монеты</b>\n\nФормат: ID СУММА\n\nПример: 123456789 500", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_remove_coins, call.message)
+        bot.register_next_step_handler(msg, process_remove_coins)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_give_role":
         if not is_admin(user_id): return
         roles_list = "\n".join(load_roles().keys())
         msg = bot.send_message(user_id, f"🎭 <b>Выдать роль</b>\n\nФормат: ID РОЛЬ\n\nДоступные роли:\n{roles_list}\n\nПример: 123456789 Vip", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_give_role, call.message)
+        bot.register_next_step_handler(msg, process_give_role)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_add_role":
         if not is_admin(user_id): return
         msg = bot.send_message(user_id, "➕ <b>Создать роль</b>\n\nФормат: НАЗВАНИЕ ЦЕНА МНОЖИТЕЛЬ\n\nПример: Legend 50000 2.0", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_add_role, call.message)
+        bot.register_next_step_handler(msg, process_add_role)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_edit_role":
         if not is_admin(user_id): return
         msg = bot.send_message(user_id, "✏️ <b>Редактировать роль</b>\n\nФормат: НАЗВАНИЕ ЦЕНА МНОЖИТЕЛЬ\n\nИспользуйте - чтобы не менять\nПример: Vip 15000 -", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_edit_role, call.message)
+        bot.register_next_step_handler(msg, process_edit_role)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_del_role":
         if not is_admin(user_id): return
         roles_list = "\n".join(load_roles().keys())
         msg = bot.send_message(user_id, f"🗑 <b>Удалить роль</b>\n\nФормат: НАЗВАНИЕ\n\nДоступные роли:\n{roles_list}\n\nПример: Legend\n\n⚠️ У пользователей с этой ролью она пропадёт", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_del_role, call.message)
+        bot.register_next_step_handler(msg, process_del_role)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_list_roles":
@@ -1497,13 +1380,13 @@ def callback_handler(call):
     if data == "admin_ban":
         if not is_admin(user_id): return
         msg = bot.send_message(user_id, "🚫 <b>Забанить</b>\n\nФормат: ID ПРИЧИНА\n\nПример: 123456789 Спам", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_ban, call.message)
+        bot.register_next_step_handler(msg, process_ban)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_unban":
         if not is_admin(user_id): return
         msg = bot.send_message(user_id, "✅ <b>Разбанить</b>\n\nФормат: ID\n\nПример: 123456789", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_unban, call.message)
+        bot.register_next_step_handler(msg, process_unban)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_add_admin":
@@ -1511,7 +1394,7 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Только для владельца", show_alert=True)
             return
         msg = bot.send_message(user_id, "👑 <b>Добавить админа</b>\n\nФормат: ID\n\nПример: 123456789", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_add_admin, call.message)
+        bot.register_next_step_handler(msg, process_add_admin)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_remove_admin":
@@ -1519,13 +1402,13 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Только для владельца", show_alert=True)
             return
         msg = bot.send_message(user_id, "🗑 <b>Удалить админа</b>\n\nФормат: ID\n\nПример: 123456789", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_remove_admin, call.message)
+        bot.register_next_step_handler(msg, process_remove_admin)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_mail":
         if not is_admin(user_id): return
         msg = bot.send_message(user_id, "📢 <b>Рассылка</b>\n\nОтправьте сообщение для рассылки всем пользователям:", parse_mode='HTML')
-        bot.register_next_step_handler(msg, process_mail, call.message)
+        bot.register_next_step_handler(msg, process_mail)
         bot.answer_callback_query(call.id)
         return
     if data == "admin_promo":
@@ -1553,7 +1436,50 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         return
 
-    # Обработка неизвестных колбэков
+    # Действия над пользователем
+    if data.startswith("user_add_coins_"):
+        if not is_admin(user_id): return
+        target_id = int(data.split("_")[-1])
+        msg = bot.send_message(user_id, f"💰 <b>Выдать монеты</b>\n\nПользователь ID: {target_id}\n\nВведите сумму:", parse_mode='HTML')
+        bot.register_next_step_handler(msg, process_user_add_coins, target_id)
+        bot.answer_callback_query(call.id)
+        return
+    if data.startswith("user_remove_coins_"):
+        if not is_admin(user_id): return
+        target_id = int(data.split("_")[-1])
+        msg = bot.send_message(user_id, f"💸 <b>Забрать монеты</b>\n\nПользователь ID: {target_id}\n\nВведите сумму:", parse_mode='HTML')
+        bot.register_next_step_handler(msg, process_user_remove_coins, target_id)
+        bot.answer_callback_query(call.id)
+        return
+    if data.startswith("user_give_role_"):
+        if not is_admin(user_id): return
+        target_id = int(data.split("_")[-1])
+        roles_list = "\n".join(load_roles().keys())
+        msg = bot.send_message(user_id, f"🎭 <b>Выдать роль</b>\n\nПользователь ID: {target_id}\n\nДоступные роли:\n{roles_list}\n\nВведите название роли:", parse_mode='HTML')
+        bot.register_next_step_handler(msg, process_user_give_role, target_id)
+        bot.answer_callback_query(call.id)
+        return
+    if data.startswith("user_ban_"):
+        if not is_admin(user_id): return
+        target_id = int(data.split("_")[-1])
+        msg = bot.send_message(user_id, f"🚫 <b>Забанить</b>\n\nПользователь ID: {target_id}\n\nВведите причину бана:", parse_mode='HTML')
+        bot.register_next_step_handler(msg, process_user_ban, target_id)
+        bot.answer_callback_query(call.id)
+        return
+    if data.startswith("user_unban_"):
+        if not is_admin(user_id): return
+        target_id = int(data.split("_")[-1])
+        users = load_json(USERS_FILE)
+        if str(target_id) in users:
+            users[str(target_id)]['is_banned'] = False
+            users[str(target_id)]['ban_reason'] = None
+            save_json(USERS_FILE, users)
+            bot.answer_callback_query(call.id, f"Пользователь {target_id} разбанен", show_alert=True)
+            markup, page, total = get_users_list_menu(1)
+            text = f"👥 <b>Список пользователей</b>\n\n📄 Страница {page}/{total}\n\n👇 <b>Выбери пользователя:</b>"
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode='HTML', reply_markup=markup)
+        return
+
     bot.answer_callback_query(call.id)
 
 # ========== ОБРАБОТЧИКИ ШАГОВ ==========
@@ -1584,24 +1510,22 @@ def process_sell_role(message, role_name, original_message):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-            bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+            try:
+                bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+            except:
+                bot.send_message(user_id, text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
     except ValueError:
         bot.send_message(user_id, "❌ Введите число", parse_mode='HTML')
 
 def process_report(message, user_id):
-    report_text = message.text or "Без текста"
+    text = message.text or "Без текста"
     file_id = None
-    file_type = None
     if message.photo:
         file_id = message.photo[-1].file_id
-        file_type = 'photo'
-        report_text = message.caption or "Без текста"
+        text = message.caption or "Без текста"
     user = get_user(user_id)
-    username = user.get('username') if user else None
-    first_name = user.get('first_name') if user else "User"
-    save_report(user_id, username, first_name, report_text, file_id, file_type)
+    save_report(user_id, user.get('username'), user.get('first_name'), text, file_id)
     bot.send_message(user_id, "✅ <b>Отчёт отправлен!</b> Спасибо за помощь.", parse_mode='HTML')
-    # Вернуть главное меню
     user = get_user(user_id)
     role = user.get('role') or "Нет роли"
     mult = get_multiplier(user_id)
@@ -1618,16 +1542,16 @@ def process_report(message, user_id):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-    bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+    try:
+        bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+    except:
+        bot.send_message(user_id, text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
 
 def process_idea(message, user_id):
-    idea_text = message.text or "Без текста"
+    text = message.text or "Без текста"
     user = get_user(user_id)
-    username = user.get('username') if user else None
-    first_name = user.get('first_name') if user else "User"
-    save_idea(user_id, username, first_name, idea_text)
+    save_idea(user_id, user.get('username'), user.get('first_name'), text)
     bot.send_message(user_id, "✅ <b>Идея отправлена!</b> Спасибо за вклад.", parse_mode='HTML')
-    # Вернуть главное меню
     user = get_user(user_id)
     role = user.get('role') or "Нет роли"
     mult = get_multiplier(user_id)
@@ -1644,9 +1568,12 @@ def process_idea(message, user_id):
 └ 🔥 Серия: {user.get('daily_streak', 0)} дн.
 
 👇 <b>Выбери действие:</b>"""
-    bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+    try:
+        bot.send_photo(user_id, IMAGES['main'], caption=text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
+    except:
+        bot.send_message(user_id, text, parse_mode='HTML', reply_markup=get_main_menu(user_id))
 
-def process_add_coins(message, original_message):
+def process_add_coins(message):
     user_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -1658,7 +1585,7 @@ def process_add_coins(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: ID СУММА", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_remove_coins(message, original_message):
+def process_remove_coins(message):
     user_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -1670,7 +1597,7 @@ def process_remove_coins(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: ID СУММА", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_give_role(message, original_message):
+def process_give_role(message):
     user_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -1688,7 +1615,7 @@ def process_give_role(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: ID РОЛЬ", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_add_role(message, original_message):
+def process_add_role(message):
     user_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -1706,7 +1633,7 @@ def process_add_role(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: НАЗВАНИЕ ЦЕНА МНОЖИТЕЛЬ", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_edit_role(message, original_message):
+def process_edit_role(message):
     user_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -1726,7 +1653,7 @@ def process_edit_role(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: НАЗВАНИЕ [ЦЕНА] [МНОЖИТЕЛЬ]\n- чтобы не менять", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_del_role(message, original_message):
+def process_del_role(message):
     user_id = message.from_user.id
     try:
         name = message.text.strip().capitalize()
@@ -1748,7 +1675,7 @@ def process_del_role(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: НАЗВАНИЕ", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_ban(message, original_message):
+def process_ban(message):
     user_id = message.from_user.id
     try:
         parts = message.text.split()
@@ -1767,7 +1694,7 @@ def process_ban(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: ID ПРИЧИНА", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_unban(message, original_message):
+def process_unban(message):
     user_id = message.from_user.id
     try:
         target = int(message.text.strip())
@@ -1784,7 +1711,7 @@ def process_unban(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: ID", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_add_admin(message, original_message):
+def process_add_admin(message):
     user_id = message.from_user.id
     if not is_master(user_id):
         bot.send_message(user_id, "Нет доступа", parse_mode='HTML')
@@ -1792,8 +1719,7 @@ def process_add_admin(message, original_message):
     try:
         target = int(message.text.strip())
         admins = load_json(ADMINS_FILE)
-        if 'admin_list' not in admins:
-            admins['admin_list'] = {}
+        if 'admin_list' not in admins: admins['admin_list'] = {}
         admins['admin_list'][str(target)] = {'level': 'moderator', 'added_by': user_id, 'added_at': get_moscow_time().strftime('%Y-%m-%d %H:%M:%S')}
         save_json(ADMINS_FILE, admins)
         bot.send_message(user_id, f"✅ <b>Готово!</b>\n\nПользователь {target} назначен администратором", parse_mode='HTML')
@@ -1805,7 +1731,7 @@ def process_add_admin(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: ID", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_remove_admin(message, original_message):
+def process_remove_admin(message):
     user_id = message.from_user.id
     if not is_master(user_id):
         bot.send_message(user_id, "Нет доступа", parse_mode='HTML')
@@ -1830,7 +1756,7 @@ def process_remove_admin(message, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nФормат: ID", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_mail(message, original_message):
+def process_mail(message):
     user_id = message.from_user.id
     if not is_admin(user_id):
         bot.send_message(user_id, "Нет доступа", parse_mode='HTML')
@@ -1838,8 +1764,7 @@ def process_mail(message, original_message):
     users = load_json(USERS_FILE)
     sent = 0
     for uid in users:
-        if int(uid) in MASTER_IDS:
-            continue
+        if int(uid) in MASTER_IDS: continue
         try:
             bot.send_message(int(uid), f"📢 <b>Рассылка от администрации</b>\n\n{message.text}", parse_mode='HTML')
             sent += 1
@@ -1849,7 +1774,7 @@ def process_mail(message, original_message):
     bot.send_message(user_id, f"✅ <b>Рассылка завершена</b>\n\n📤 Отправлено: {sent}", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_user_add_coins(message, target_id, original_message):
+def process_user_add_coins(message, target_id):
     user_id = message.from_user.id
     try:
         amount = int(message.text.strip())
@@ -1857,10 +1782,9 @@ def process_user_add_coins(message, target_id, original_message):
         bot.send_message(user_id, f"✅ <b>Готово!</b>\n\n+{amount}💰 пользователю {target_id}", parse_mode='HTML')
     except:
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nВведите число", parse_mode='HTML')
-    # Обновить меню админа
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_user_remove_coins(message, target_id, original_message):
+def process_user_remove_coins(message, target_id):
     user_id = message.from_user.id
     try:
         amount = int(message.text.strip())
@@ -1870,7 +1794,7 @@ def process_user_remove_coins(message, target_id, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nВведите число", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_user_give_role(message, target_id, original_message):
+def process_user_give_role(message, target_id):
     user_id = message.from_user.id
     try:
         role = message.text.strip().capitalize()
@@ -1886,7 +1810,7 @@ def process_user_give_role(message, target_id, original_message):
         bot.send_message(user_id, "❌ <b>Ошибка!</b>\n\nВведите название роли", parse_mode='HTML')
     bot.send_message(user_id, "🔧 Админ панель", reply_markup=get_admin_panel())
 
-def process_user_ban(message, target_id, original_message):
+def process_user_ban(message, target_id):
     user_id = message.from_user.id
     try:
         reason = message.text.strip()
@@ -1916,14 +1840,7 @@ def create_promo(message):
         max_uses = int(parts[3])
         days = int(parts[4]) if len(parts) > 4 else 7
         promos = load_json(PROMO_FILE)
-        promos[code] = {
-            'type': 'coins',
-            'coins': coins,
-            'max_uses': max_uses,
-            'used': 0,
-            'used_by': [],
-            'expires_at': (get_moscow_time() + timedelta(days=days)).isoformat()
-        }
+        promos[code] = {'type': 'coins', 'coins': coins, 'max_uses': max_uses, 'used': 0, 'used_by': [], 'expires_at': (get_moscow_time() + timedelta(days=days)).isoformat()}
         save_json(PROMO_FILE, promos)
         bot.reply_to(message, f"✅ <b>Промокод создан</b>\n\nКод: {code}\nМонеты: {coins}💰\nЛимит: {max_uses}\nДней: {days}", parse_mode='HTML')
     except:
@@ -1945,15 +1862,7 @@ def create_role_promo(message):
             bot.reply_to(message, f"❌ Роль {role} не найдена")
             return
         promos = load_json(PROMO_FILE)
-        promos[code] = {
-            'type': 'role',
-            'role': role,
-            'days': days,
-            'max_uses': max_uses,
-            'used': 0,
-            'used_by': [],
-            'expires_at': (get_moscow_time() + timedelta(days=30)).isoformat()
-        }
+        promos[code] = {'type': 'role', 'role': role, 'days': days, 'max_uses': max_uses, 'used': 0, 'used_by': [], 'expires_at': (get_moscow_time() + timedelta(days=30)).isoformat()}
         save_json(PROMO_FILE, promos)
         bot.reply_to(message, f"✅ <b>Промокод на роль создан</b>\n\nКод: {code}\nРоль: {role}\nДней: {days}\nЛимит: {max_uses}", parse_mode='HTML')
     except:
@@ -1961,8 +1870,7 @@ def create_role_promo(message):
 
 @bot.message_handler(commands=['use'])
 def use_promo(message):
-    if message.chat.type != 'private':
-        return
+    if message.chat.type != 'private': return
     user_id = message.from_user.id
     try:
         code = message.text.split()[1].upper()
@@ -2009,27 +1917,26 @@ def set_photo_command(message):
             bot.reply_to(message, f"❌ Неверный ключ. Доступные: {', '.join(IMAGES.keys())}")
             return
         if message.reply_to_message and message.reply_to_message.photo:
-            # Сохраняем в настройки (можно расширить)
             bot.reply_to(message, f"✅ Фото для {key} обновлено (временно, для постоянного нужно менять код)", parse_mode='HTML')
         else:
             bot.reply_to(message, "❌ Ответьте на фото командой /setphoto КЛЮЧ", parse_mode='HTML')
     except:
         bot.reply_to(message, "❌ /setphoto КЛЮЧ (ответ на фото)\n\nДоступные ключи: main, shop, profile, market, workshop, bonus, leaders, help", parse_mode='HTML')
 
-# ========== НАЧИСЛЕНИЕ ЗА СООБЩЕНИЯ (ДЛЯ ВСЕХ ЧАТОВ) ==========
+# ========== НАЧИСЛЕНИЕ ЗА СООБЩЕНИЯ ==========
 @bot.message_handler(func=lambda m: m.chat.type != 'private' and not m.from_user.is_bot)
 def handle_chat(m):
     add_message(m.from_user.id)
     check_referral_reward(m.from_user.id)
 
-# ========== ФОНОВЫЙ ПОТОК ДЛЯ ОЧИСТКИ РЫНКА ==========
+# ========== ФОНОВЫЙ ПОТОК ==========
 def market_cleaner():
     while True:
         time.sleep(3600)
         try:
             cleanup_expired_lots()
-        except Exception as e:
-            print(f"Ошибка очистки рынка: {e}")
+        except:
+            pass
 
 # ========== ЗАПУСК ==========
 if __name__ == "__main__":
